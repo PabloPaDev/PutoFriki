@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+body {
+	@apply antialiased bg-zinc-950 text-zinc-100 min-h-screen;
+	font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+	/* Safe area para móviles con notch / barra de gestos */
+	padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* Área segura superior para notch (header) */
+.safe-area-inset-top {
+	padding-top: env(safe-area-inset-top, 0);
+}
