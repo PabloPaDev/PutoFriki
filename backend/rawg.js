@@ -2,7 +2,7 @@ const RAWG_BASE = "https://api.rawg.io/api";
 
 export async function searchGames(query, apiKey) {
 	if (!apiKey) {
-		return { results: [], error: "RAWG_API_KEY no configurada" };
+		return { results: [], error: "Búsqueda no disponible" };
 	}
 	const params = new URLSearchParams({
 		key: apiKey,

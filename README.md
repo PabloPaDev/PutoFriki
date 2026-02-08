@@ -72,7 +72,13 @@ Backend y frontend se despliegan por separado.
 - **Start command:** `npm start`
 - **Variables de entorno:** `PORT` (Render la asigna), `RAWG_API_KEY`, `CORS_ORIGIN` = URL del frontend en Vercel (ej. `https://tu-app.vercel.app`). Opcional: `DB_PATH` si usas disco persistente.
 
-La base SQLite se crea en el entorno de Render (ephemeral por defecto). Para persistencia, considera un disco o servicio externo y `DB_PATH`.
+**Persistencia de la base de datos:** Por defecto el disco en Render es efímero: la SQLite (usuarios, juegos, pendientes, insignias, mensajes) **se borra en cada deploy o reinicio**. Para que los datos **nunca se pierdan**:
+
+1. En tu Web Service de Render → **Disks** → **Add Disk**.
+2. Nombre: `data`. Mount Path: `/data`. Tamaño: 1 GB (o el que quieras).
+3. En **Environment** añade la variable **`DB_PATH`** = **`/data/juegos.db`**.
+
+Así la base de datos queda en el disco persistente y sobrevive a despliegues y reinicios. Los 2 usuarios, sus juegos, pendientes e insignias se mantienen.
 
 ### Frontend en Vercel
 

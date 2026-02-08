@@ -192,8 +192,9 @@ export default function Buscar() {
 			.then((r) => r.json().then((data) => ({ ok: r.ok, data })))
 			.then(({ ok, data }) => {
 				setResults(data.results || []);
-				if (data.error) setError(data.error);
-				if (!ok) setError(data.error || "Error en la búsqueda");
+				const err = data.error;
+				if (err) setError(err === "Búsqueda no disponible" ? "La búsqueda de juegos no está disponible en este momento. Inténtalo más tarde." : err);
+				if (!ok && !err) setError("Error en la búsqueda");
 			})
 			.catch(() => {
 				setError("No se pudo conectar con el servidor. ¿Está el backend en marcha (puerto 3001)?");

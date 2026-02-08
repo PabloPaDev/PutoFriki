@@ -1,5 +1,5 @@
 import initSqlJs from "sql.js";
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
@@ -8,9 +8,15 @@ const dbPath = process.env.DB_PATH || join(__dirname, "juegos.db");
 
 let db = null;
 
+function ensureDbDir() {
+	const dir = dirname(dbPath);
+	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+}
+
 function save() {
 	if (!db) return;
 	try {
+		ensureDbDir();
 		const data = db.export();
 		writeFileSync(dbPath, Buffer.from(data));
 	} catch (e) {
@@ -44,6 +50,7 @@ function wrapStmt(stmt) {
 
 export async function getDb() {
 	if (db) return db;
+	ensureDbDir();
 	const SqlJs = await initSqlJs();
 	const fileBuffer = existsSync(dbPath) ? readFileSync(dbPath) : null;
 	db = new SqlJs.Database(fileBuffer);
