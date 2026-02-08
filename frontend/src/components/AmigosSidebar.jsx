@@ -44,12 +44,12 @@ export default function AmigosSidebar() {
 						className="flex items-center gap-2 text-zinc-300 hover:text-white font-medium transition-colors"
 					>
 						<IconTrophy className="text-current" size={20} strokeWidth={1.8} aria-hidden />
-						+ Friki
+						+ PUTO FRIKI
 					</Link>
 					<Link
 						to="/amigos"
 						className="w-9 h-9 rounded-lg bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
-						title="Ver + Friki"
+						title="Ver + PUTO FRIKI"
 					>
 						<IconPlus className="text-current" size={18} strokeWidth={1.8} aria-hidden />
 					</Link>
@@ -65,7 +65,7 @@ export default function AmigosSidebar() {
 									to={isCurrent ? "/" : `/perfil/${u.slug}`}
 									className={`flex items-center gap-3 p-2 rounded-xl transition-colors ${
 										isCurrent
-											? "bg-violet-600/20 text-violet-300"
+											? "bg-orange-600/20 text-orange-300"
 											: "hover:bg-zinc-800 text-zinc-300 hover:text-white"
 									}`}
 								>

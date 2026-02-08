@@ -1,13 +1,50 @@
 @import "tailwindcss";
 
 body {
-	@apply antialiased bg-zinc-950 text-zinc-100 min-h-screen;
-	font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+	@apply antialiased min-h-screen;
+	background-color: #0a0a0a;
+	color: #f4f4f5;
+	font-family: "Satoshi", system-ui, sans-serif;
 	/* Safe area para móviles con notch / barra de gestos */
 	padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* Asegurar fondo negro en vistas principales */
+#root {
+	@apply min-h-screen;
+	background-color: #0a0a0a;
 }
 
 /* Área segura superior para notch (header) */
 .safe-area-inset-top {
 	padding-top: env(safe-area-inset-top, 0);
+}
+
+/* Scrollbars con estética de la app (oscuro + acento naranja) */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: #52525b /* zinc-600 */ #27272a; /* zinc-800 */
+}
+
+*::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+	background: #27272a; /* zinc-800 */
+	border-radius: 4px;
+}
+
+*::-webkit-scrollbar-thumb {
+	background: #52525b; /* zinc-600 */
+	border-radius: 4px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+	background: #ea580c; /* orange-600 */
+}
+
+*::-webkit-scrollbar-corner {
+	background: #27272a;
 }

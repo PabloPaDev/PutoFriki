@@ -74,6 +74,7 @@ export async function getDb() {
 			rating REAL NOT NULL,
 			opinion TEXT,
 			played_at TEXT NOT NULL,
+			completed INTEGER NOT NULL DEFAULT 1,
 			UNIQUE(user_id, game_id),
 			FOREIGN KEY (user_id) REFERENCES users(id),
 			FOREIGN KEY (game_id) REFERENCES games(id)
@@ -89,10 +90,62 @@ export async function getDb() {
 			FOREIGN KEY (game_id) REFERENCES games(id)
 		);
 
+		CREATE TABLE IF NOT EXISTS user_achievements (
+			user_id INTEGER NOT NULL,
+			achievement_id TEXT NOT NULL,
+			unlocked_at TEXT NOT NULL,
+			PRIMARY KEY (user_id, achievement_id),
+			FOREIGN KEY (user_id) REFERENCES users(id)
+		);
+
+		CREATE TABLE IF NOT EXISTS messages (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			from_user_id INTEGER NOT NULL,
+			to_user_id INTEGER NOT NULL,
+			body TEXT NOT NULL,
+			game_id INTEGER,
+			created_at TEXT NOT NULL,
+			FOREIGN KEY (from_user_id) REFERENCES users(id),
+			FOREIGN KEY (to_user_id) REFERENCES users(id),
+			FOREIGN KEY (game_id) REFERENCES games(id)
+		);
+		CREATE TABLE IF NOT EXISTS push_subscriptions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			endpoint TEXT NOT NULL,
+			p256dh TEXT NOT NULL,
+			auth TEXT NOT NULL,
+			UNIQUE(user_id),
+			FOREIGN KEY (user_id) REFERENCES users(id)
+		);
+		CREATE TABLE IF NOT EXISTS released_notification_sent (
+			user_id INTEGER NOT NULL,
+			game_id INTEGER NOT NULL,
+			sent_at TEXT NOT NULL,
+			PRIMARY KEY (user_id, game_id),
+			FOREIGN KEY (user_id) REFERENCES users(id),
+			FOREIGN KEY (game_id) REFERENCES games(id)
+		);
+
 		CREATE INDEX IF NOT EXISTS idx_user_played_user ON user_played(user_id);
 		CREATE INDEX IF NOT EXISTS idx_user_played_played_at ON user_played(played_at);
 		CREATE INDEX IF NOT EXISTS idx_user_pending_user ON user_pending(user_id);
+		CREATE INDEX IF NOT EXISTS idx_user_achievements_user ON user_achievements(user_id);
+		CREATE INDEX IF NOT EXISTS idx_messages_to_from ON messages(to_user_id, from_user_id);
 	`);
+
+	try {
+		db.run("ALTER TABLE user_played ADD COLUMN completed INTEGER NOT NULL DEFAULT 1");
+		save();
+	} catch (_) {}
+	try {
+		db.run("ALTER TABLE users ADD COLUMN bio TEXT");
+		save();
+	} catch (_) {}
+	try {
+		db.run("ALTER TABLE users ADD COLUMN avatar TEXT");
+		save();
+	} catch (_) {}
 
 	const countResult = db.exec("SELECT COUNT(*) as c FROM users");
 	const c = countResult.length && countResult[0].values[0][0];

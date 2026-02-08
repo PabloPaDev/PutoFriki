@@ -12,6 +12,8 @@ import {
 	Clock,
 	Calendar,
 	Trophy,
+	CircleSlash,
+	MessageCircle,
 } from "lucide-react";
 
 const iconClass = "flex-shrink-0";
@@ -47,6 +49,9 @@ export function IconClock(props) {
 export function IconCalendar(props) {
 	return <Calendar className={iconClass} size={sizeNav} strokeWidth={stroke} {...props} />;
 }
+export function IconCircleSlash(props) {
+	return <CircleSlash className={iconClass} size={sizeNav} strokeWidth={stroke} {...props} />;
+}
 
 /** Para la barra inferior móvil (un poco más grandes) */
 export function IconHomeMobile(props) {
@@ -67,6 +72,12 @@ export function IconTrophyMobile(props) {
 export function IconPlusMobile(props) {
 	return <Plus className={iconClass} size={sizeNavMobile} strokeWidth={stroke} {...props} />;
 }
+export function IconChat(props) {
+	return <MessageCircle className={iconClass} size={sizeNav} strokeWidth={stroke} {...props} />;
+}
+export function IconChatMobile(props) {
+	return <MessageCircle className={iconClass} size={sizeNavMobile} strokeWidth={stroke} {...props} />;
+}
 
 /** Para tarjetas de estadísticas y tabs del Dashboard */
 export function IconGamepadStats(props) {
@@ -80,4 +91,7 @@ export function IconClockStats(props) {
 }
 export function IconCalendarStats(props) {
 	return <Calendar className={iconClass} size={sizeStats} strokeWidth={stroke} {...props} />;
+}
+export function IconCircleSlashStats(props) {
+	return <CircleSlash className={iconClass} size={sizeStats} strokeWidth={stroke} {...props} />;
 }

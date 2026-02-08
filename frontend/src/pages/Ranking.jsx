@@ -54,7 +54,7 @@ export default function Ranking() {
 					onClick={() => setOrder("rating")}
 					className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
 						order === "rating"
-							? "bg-violet-600 text-white shadow-lg shadow-violet-600/20"
+							? "bg-orange-600 text-white shadow-lg shadow-orange-600/20"
 							: "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
 					}`}
 				>
@@ -65,7 +65,7 @@ export default function Ranking() {
 					onClick={() => setOrder("played_at")}
 					className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
 						order === "played_at"
-							? "bg-violet-600 text-white shadow-lg shadow-violet-600/20"
+							? "bg-orange-600 text-white shadow-lg shadow-orange-600/20"
 							: "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
 					}`}
 				>
@@ -83,7 +83,7 @@ export default function Ranking() {
 							key={g.game_id}
 							className="flex gap-4 sm:gap-5 p-4 sm:p-5 rounded-2xl bg-zinc-900/80 border border-zinc-800 hover:border-zinc-700 transition-colors items-start"
 						>
-							<span className="flex-shrink-0 w-8 h-8 rounded-lg bg-violet-600/80 text-white font-bold text-sm flex items-center justify-center">
+							<span className="flex-shrink-0 w-8 h-8 rounded-lg bg-orange-600/80 text-white font-bold text-sm flex items-center justify-center">
 								#{i + 1}
 							</span>
 							{g.image_url && (
@@ -96,7 +96,7 @@ export default function Ranking() {
 							<div className="flex-1 min-w-0">
 								<div className="flex flex-wrap items-center gap-2 mb-1">
 									<h3 className="text-lg sm:text-xl font-semibold text-white">{g.name}</h3>
-									<span className="px-2.5 py-0.5 rounded-lg bg-violet-600/80 text-white text-sm font-medium">
+									<span className="px-2.5 py-0.5 rounded-lg bg-orange-600/80 text-white text-sm font-medium">
 										{g.rating}/10
 									</span>
 								</div>

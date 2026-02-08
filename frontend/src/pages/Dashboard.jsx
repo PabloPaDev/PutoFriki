@@ -8,13 +8,15 @@ import {
 	IconStarStats,
 	IconClockStats,
 	IconCalendarStats,
+	IconCircleSlashStats,
 	IconPlus,
 } from "../components/Icons";
 
 const MAX_PREVIEW = 3;
 
 const TABS = [
-	{ key: "jugados", label: "Jugados", Icon: IconStarStats },
+	{ key: "completados", label: "Completados", Icon: IconStarStats },
+	{ key: "abandonados", label: "Abandonados", Icon: IconCircleSlashStats },
 	{ key: "pendientes", label: "Pendientes", Icon: IconClockStats },
 	{ key: "esperados", label: "Esperados", Icon: IconCalendarStats },
 ];
@@ -48,15 +50,15 @@ export default function Dashboard() {
 	const { setRefreshJugadosTrigger } = useUser();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const tabFromUrl = searchParams.get("tab");
-	const validTab = TABS.some((t) => t.key === tabFromUrl) ? tabFromUrl : "jugados";
+	const validTab = TABS.some((t) => t.key === tabFromUrl) ? tabFromUrl : "completados";
 	const [data, setData] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [tab, setTab] = useState(validTab);
-	const [expanded, setExpanded] = useState({ pendientes: false, esperados: false });
+	const [expanded, setExpanded] = useState({ completados: false, abandonados: false, pendientes: false, esperados: false });
 
 	useEffect(() => {
 		const t = searchParams.get("tab");
-		setTab(TABS.some((x) => x.key === t) ? t : "jugados");
+		setTab(TABS.some((x) => x.key === t) ? t : "completados");
 	}, [searchParams]);
 
 	useEffect(() => {
@@ -92,44 +94,49 @@ export default function Dashboard() {
 	}
 
 	const { jugados, pendientes } = data;
+	const completadosTab = jugados.filter((g) => g.completed !== false);
+	const abandonadosTab = jugados.filter((g) => g.completed === false);
 	const pendientesTab = pendientes.filter((g) => isAlreadyReleased(g.released));
 	const esperadosTab = pendientes.filter((g) => isUpcoming(g.released));
 	const total = jugados.length + pendientes.length;
 
 	const stats = [
 		{ label: "Total", value: total, Icon: IconGamepadStats },
-		{ label: "Jugados", value: jugados.length, Icon: IconStarStats },
+		{ label: "Completados", value: completadosTab.length, Icon: IconStarStats },
+		{ label: "Abandonados", value: abandonadosTab.length, Icon: IconCircleSlashStats },
 		{ label: "Pendientes", value: pendientesTab.length, Icon: IconClockStats },
 		{ label: "Esperados", value: esperadosTab.length, Icon: IconCalendarStats },
 	];
 
 	const switchTab = (key) => {
 		setTab(key);
-		setSearchParams(key === "jugados" ? {} : { tab: key });
+		setSearchParams(key === "completados" ? {} : { tab: key });
 	};
 
 	const emptyMessages = {
-		jugados: "No hay juegos jugados. Agrega juegos que ya hayas completado y califícalos.",
+		completados: "No hay juegos completados. Añade juegos desde Buscar y márcalos como completados.",
+		abandonados: "No hay juegos abandonados. Puedes marcar como abandonado desde la pestaña Completados.",
 		pendientes: "No hay juegos pendientes que ya hayan salido. Añade juegos lanzados desde Buscar.",
 		esperados: "No hay juegos por salir. Añade pendientes con fecha futura o por confirmar desde Buscar.",
 	};
 
 	const listByTab = {
-		jugados,
+		completados: completadosTab,
+		abandonados: abandonadosTab,
 		pendientes: pendientesTab,
 		esperados: esperadosTab,
 	};
 	const currentList = listByTab[tab];
-	const isJugados = tab === "jugados";
-	const displayedList = isJugados
-		? currentList.slice(0, MAX_PREVIEW)
-		: currentList.slice(0, expanded[tab] ? currentList.length : MAX_PREVIEW);
+	const isCompletados = tab === "completados";
+	const isAbandonados = tab === "abandonados";
+	const isJugadoTab = isCompletados || isAbandonados;
+	const displayedList = currentList.slice(0, expanded[tab] ? currentList.length : MAX_PREVIEW);
 	const hasMore = currentList.length > MAX_PREVIEW;
-	const showVerMas = hasMore && (isJugados || !expanded[tab]);
+	const showVerMas = hasMore && !expanded[tab];
 
 	return (
 		<>
-			<div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+			<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
 				{stats.map((s) => (
 					<div
 						key={s.label}
@@ -151,7 +158,7 @@ export default function Dashboard() {
 						onClick={() => switchTab(key)}
 						className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
 							tab === key
-								? "bg-violet-600 text-white shadow-lg shadow-violet-600/20"
+								? "bg-orange-600 text-white shadow-lg shadow-orange-600/20"
 								: "text-zinc-400 hover:text-white hover:bg-zinc-800"
 						}`}
 					>
@@ -178,7 +185,9 @@ export default function Dashboard() {
 							<GameRow
 								key={g.game_id}
 								game={g}
-								isJugado={tab === "jugados"}
+								isJugado={isJugadoTab}
+								isCompletadosTab={isCompletados}
+								isAbandonadosTab={isAbandonados}
 								isOwn
 								slug={slug}
 								onRemove={refresh}
@@ -186,24 +195,15 @@ export default function Dashboard() {
 						))}
 						{showVerMas && (
 							<div className="flex justify-center pt-2">
-								{isJugados ? (
-									<Link
-										to="/ranking"
-										className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white border border-zinc-700 transition-colors"
-									>
-										<IconPlus className="text-current" size={18} strokeWidth={1.8} aria-hidden />
-										Ver más en Top juegos
-									</Link>
-								) : (
-									<button
-										type="button"
-										onClick={() => setExpanded((e) => ({ ...e, [tab]: true }))}
-										className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white border border-zinc-700 transition-colors"
-									>
-										<IconPlus className="text-current" size={18} strokeWidth={1.8} aria-hidden />
-										Ver más
-									</button>
-								)}
+								<button
+									type="button"
+									onClick={() => setExpanded((e) => ({ ...e, [tab]: true }))}
+									className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white border border-zinc-700 transition-colors"
+									aria-label={`Ver todos (${currentList.length - MAX_PREVIEW} más)`}
+								>
+									<IconPlus className="text-current" size={18} strokeWidth={1.8} aria-hidden />
+									+ Ver todos ({currentList.length - MAX_PREVIEW} más)
+								</button>
 							</div>
 						)}
 					</>

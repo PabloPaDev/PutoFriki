@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCurrentUserSlug, useUser } from "../App";
+import { useToast } from "../components/ToastContext";
 import { apiBase } from "../api";
 import { formatReleaseDate } from "../utils/formatReleaseDate";
 
@@ -8,9 +9,11 @@ function GameResult({ game, onAddJugado, onAddPendiente }) {
 	const [showForm, setShowForm] = useState(false);
 	const [rating, setRating] = useState(7);
 	const [opinion, setOpinion] = useState("");
+	const [abandoned, setAbandoned] = useState(false);
 	const slug = useCurrentUserSlug();
 	const navigate = useNavigate();
 	const { setRefreshJugadosTrigger } = useUser();
+	const { addToast } = useToast();
 
 	const releaseLabel = formatReleaseDate(game.released);
 	const genres = Array.isArray(game.genres) ? game.genres.join(", ") : game.genres || "—";
@@ -30,6 +33,7 @@ function GameResult({ game, onAddJugado, onAddPendiente }) {
 				metacritic: game.metacritic,
 				rating: Number(rating),
 				opinion: opinion.trim() || null,
+				completed: !abandoned,
 			}),
 		})
 			.then((r) => r.json().then((data) => ({ ok: r.ok, data })))
@@ -38,10 +42,13 @@ function GameResult({ game, onAddJugado, onAddPendiente }) {
 					alert(data?.error || "Error al guardar");
 					return;
 				}
+				(data.newlyUnlocked || []).forEach((a) =>
+					addToast({ title: a.title, description: a.description, icon: a.icon })
+				);
 				setShowForm(false);
 				onAddJugado?.();
 				setRefreshJugadosTrigger?.((t) => t + 1);
-				navigate("/ranking", { replace: false });
+				navigate(abandoned ? "/?tab=abandonados" : "/ranking", { replace: false });
 			})
 			.catch(() => alert("Error al añadir. ¿Está el backend en marcha?"));
 	};
@@ -66,6 +73,9 @@ function GameResult({ game, onAddJugado, onAddPendiente }) {
 					alert(data?.error || "Error al guardar");
 					return;
 				}
+				(data.newlyUnlocked || []).forEach((a) =>
+					addToast({ title: a.title, description: a.description, icon: a.icon })
+				);
 				onAddPendiente?.();
 				setRefreshJugadosTrigger?.((t) => t + 1);
 				navigate("/perfil?tab=pendientes", { replace: false });
@@ -95,7 +105,7 @@ function GameResult({ game, onAddJugado, onAddPendiente }) {
 						<button
 							type="button"
 							onClick={() => setShowForm(true)}
-							className="px-4 py-2 rounded-xl text-sm font-medium bg-violet-600 text-white hover:bg-violet-500 transition-colors"
+							className="px-4 py-2 rounded-xl text-sm font-medium bg-orange-600 text-white hover:bg-orange-500 transition-colors"
 						>
 							Lo he jugado (valorar)
 						</button>
@@ -120,7 +130,7 @@ function GameResult({ game, onAddJugado, onAddPendiente }) {
 								step="0.5"
 								value={rating}
 								onChange={(e) => setRating(e.target.value)}
-								className="w-full max-w-[120px] px-3 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+								className="w-full max-w-[120px] px-3 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-white focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none"
 							/>
 						</div>
 						<div>
@@ -132,13 +142,22 @@ function GameResult({ game, onAddJugado, onAddPendiente }) {
 								value={opinion}
 								onChange={(e) => setOpinion(e.target.value)}
 								placeholder="Tu opinión..."
-								className="w-full px-3 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none resize-none"
+								className="w-full px-3 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none resize-none"
 							/>
 						</div>
+						<label className="flex items-center gap-2 text-zinc-400 text-sm cursor-pointer">
+							<input
+								type="checkbox"
+								checked={abandoned}
+								onChange={(e) => setAbandoned(e.target.checked)}
+								className="rounded border-zinc-600 bg-zinc-800 text-amber-500 focus:ring-orange-500"
+							/>
+							Lo abandoné (no lo completé)
+						</label>
 						<div className="flex gap-2">
 							<button
 								type="submit"
-								className="px-4 py-2 rounded-xl text-sm font-medium bg-violet-600 text-white hover:bg-violet-500 transition-colors"
+								className="px-4 py-2 rounded-xl text-sm font-medium bg-orange-600 text-white hover:bg-orange-500 transition-colors"
 							>
 								Guardar
 							</button>
@@ -196,12 +215,12 @@ export default function Buscar() {
 						placeholder="Nombre del juego..."
 						value={query}
 						onChange={(e) => setQuery(e.target.value)}
-						className="flex-1 min-w-[200px] max-w-md px-4 py-3 rounded-xl bg-zinc-900 border border-zinc-700 text-white placeholder-zinc-500 focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+						className="flex-1 min-w-[200px] max-w-md px-4 py-3 rounded-xl bg-zinc-900 border border-zinc-700 text-white placeholder-zinc-500 focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none"
 					/>
 					<button
 						type="submit"
 						disabled={loading}
-						className="px-6 py-3 rounded-xl font-medium bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+						className="px-6 py-3 rounded-xl font-medium bg-orange-600 text-white hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 					>
 						{loading ? "Buscando…" : "Buscar"}
 					</button>

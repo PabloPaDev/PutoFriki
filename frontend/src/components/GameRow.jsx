@@ -1,9 +1,11 @@
 import { useUser } from "../App";
+import { useToast } from "./ToastContext";
 import { apiBase } from "../api";
 import { formatReleaseDate } from "../utils/formatReleaseDate";
 
-export default function GameRow({ game, isJugado, isOwn, slug, onRemove }) {
+export default function GameRow({ game, isJugado, isOwn, slug, onRemove, isCompletadosTab, isAbandonadosTab }) {
 	const { setRefreshJugadosTrigger } = useUser();
+	const { addToast } = useToast();
 
 	const handleRemove = () => {
 		if (!confirm("¿Quitar de la lista?")) return;
@@ -13,6 +15,23 @@ export default function GameRow({ game, isJugado, isOwn, slug, onRemove }) {
 			.then(() => {
 				onRemove?.();
 				if (isJugado) setRefreshJugadosTrigger?.((t) => t + 1);
+			})
+			.catch(() => alert("Error"));
+	};
+
+	const handleToggleCompleted = (completed) => {
+		fetch(`${apiBase}/api/users/${slug}/jugados/${game.game_id}`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ completed }),
+		})
+			.then((r) => r.json())
+			.then((data) => {
+				(data.newlyUnlocked || []).forEach((a) =>
+					addToast({ title: a.title, description: a.description, icon: a.icon })
+				);
+				onRemove?.();
+				setRefreshJugadosTrigger?.((t) => t + 1);
 			})
 			.catch(() => alert("Error"));
 	};
@@ -35,7 +54,7 @@ export default function GameRow({ game, isJugado, isOwn, slug, onRemove }) {
 					{releaseLabel}
 					{genres && ` · ${genres}`}
 					{isJugado && (
-						<span className="inline-block ml-1.5 px-2 py-0.5 rounded-md bg-violet-600/80 text-white text-xs font-medium">
+						<span className="inline-block ml-1.5 px-2 py-0.5 rounded-md bg-orange-600/80 text-white text-xs font-medium">
 							{game.rating}/10
 						</span>
 					)}
@@ -44,13 +63,33 @@ export default function GameRow({ game, isJugado, isOwn, slug, onRemove }) {
 					<p className="text-zinc-500 text-xs mt-1.5 leading-snug line-clamp-2">{game.opinion}</p>
 				)}
 				{isOwn && (
-					<button
-						type="button"
-						onClick={handleRemove}
-						className="mt-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-700 text-zinc-200 hover:bg-zinc-600 transition-colors"
-					>
-						Quitar
-					</button>
+					<div className="mt-2 flex flex-wrap gap-2">
+						{isCompletadosTab && (
+							<button
+								type="button"
+								onClick={() => handleToggleCompleted(false)}
+								className="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-600/80 text-white hover:bg-amber-500 transition-colors"
+							>
+								Marcar como abandonado
+							</button>
+						)}
+						{isAbandonadosTab && (
+							<button
+								type="button"
+								onClick={() => handleToggleCompleted(true)}
+								className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600/80 text-white hover:bg-emerald-500 transition-colors"
+							>
+								Marcar como completado
+							</button>
+						)}
+						<button
+							type="button"
+							onClick={handleRemove}
+							className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-700 text-zinc-200 hover:bg-zinc-600 transition-colors"
+						>
+							Quitar
+						</button>
+					</div>
 				)}
 			</div>
 		</div>

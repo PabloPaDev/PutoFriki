@@ -1,5 +1,6 @@
 import { useState, useEffect, createContext, useContext } from "react";
 import { apiBase } from "./api";
+import { registerPushIfPossible } from "./utils/pushRegistration";
 import { Routes, Route, Navigate } from "react-router-dom";
 import WhoAreYou from "./pages/WhoAreYou";
 import Layout from "./Layout";
@@ -8,7 +9,9 @@ import Dashboard from "./pages/Dashboard";
 import Perfil from "./pages/Perfil";
 import Ranking from "./pages/Ranking";
 import Amigos from "./pages/Amigos";
+import Chat from "./pages/Chat";
 import RedirectPerfilToHome from "./components/RedirectPerfilToHome";
+import { ToastProvider } from "./components/ToastContext";
 
 const defaultUserContext = {
 	currentUser: null,
@@ -52,6 +55,10 @@ export default function App() {
 			.catch(() => setUsers([]));
 	}, []);
 
+	useEffect(() => {
+		if (currentUser?.slug) registerPushIfPossible(apiBase, currentUser.slug);
+	}, [currentUser?.slug]);
+
 	const setUser = (user) => {
 		if (user) {
 			localStorage.setItem("juegos_app_user", user.slug);
@@ -64,7 +71,7 @@ export default function App() {
 
 	if (currentUser === undefined && users.length) {
 		return (
-			<div className="min-h-screen flex items-center justify-center bg-zinc-950">
+			<div className="min-h-screen flex items-center justify-center bg-black">
 				<p className="text-zinc-400">Cargando…</p>
 			</div>
 		);
@@ -73,27 +80,32 @@ export default function App() {
 	if (!currentUser) {
 		return (
 			<UserContext.Provider value={{ currentUser: null, users, setUser }}>
-				<Routes>
-					<Route path="/" element={<WhoAreYou />} />
-					<Route path="*" element={<Navigate to="/" replace />} />
-				</Routes>
+				<ToastProvider>
+					<Routes>
+						<Route path="/" element={<WhoAreYou />} />
+						<Route path="*" element={<Navigate to="/" replace />} />
+					</Routes>
+				</ToastProvider>
 			</UserContext.Provider>
 		);
 	}
 
 	return (
 		<UserContext.Provider value={{ currentUser, users, setUser, refreshJugadosTrigger, setRefreshJugadosTrigger }}>
-			<Routes>
-				<Route path="/" element={<Layout />}>
-					<Route index element={<Dashboard />} />
-					<Route path="perfil" element={<RedirectPerfilToHome />} />
-					<Route path="perfil/:slug" element={<Perfil />} />
-					<Route path="buscar" element={<Buscar />} />
-					<Route path="ranking" element={<Ranking />} />
-					<Route path="amigos" element={<Amigos />} />
-				</Route>
-				<Route path="*" element={<Navigate to="/" replace />} />
-			</Routes>
+			<ToastProvider>
+				<Routes>
+					<Route path="/" element={<Layout />}>
+						<Route index element={<Dashboard />} />
+						<Route path="perfil" element={<RedirectPerfilToHome />} />
+						<Route path="perfil/:slug" element={<Perfil />} />
+						<Route path="buscar" element={<Buscar />} />
+						<Route path="ranking" element={<Ranking />} />
+						<Route path="amigos" element={<Amigos />} />
+						<Route path="chat" element={<Chat />} />
+					</Route>
+					<Route path="*" element={<Navigate to="/" replace />} />
+				</Routes>
+			</ToastProvider>
 		</UserContext.Provider>
 	);
 }
