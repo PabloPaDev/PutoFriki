@@ -1,16 +1,20 @@
 import initSqlJs from "sql.js";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { fileURLToPath } from "url";
-import { dirname, join } from "path";
+import { dirname, join, resolve } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+// Render: DB_PATH=/data/juegos.db (disco persistente). Local: fallback en ./backend
 const dbPath = process.env.DB_PATH || join(__dirname, "juegos.db");
 
 let db = null;
+let startupLogged = false;
 
 function ensureDbDir() {
 	const dir = dirname(dbPath);
-	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+	if (!existsSync(dir)) {
+		mkdirSync(dir, { recursive: true });
+	}
 }
 
 function save() {
@@ -51,6 +55,10 @@ function wrapStmt(stmt) {
 export async function getDb() {
 	if (db) return db;
 	ensureDbDir();
+	if (!startupLogged) {
+		console.log("Using SQLite database at:", resolve(dbPath));
+		startupLogged = true;
+	}
 	const SqlJs = await initSqlJs();
 	const fileBuffer = existsSync(dbPath) ? readFileSync(dbPath) : null;
 	db = new SqlJs.Database(fileBuffer);

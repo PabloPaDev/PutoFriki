@@ -43,7 +43,7 @@ const AVATAR_QUALITY = 0.82;
 export default function Perfil({ slug: propSlug }) {
 	const { slug: paramSlug } = useParams();
 	const [searchParams, setSearchParams] = useSearchParams();
-	const { currentUser, setRefreshJugadosTrigger, setUser } = useUser();
+	const { currentUser, refreshJugadosTrigger, setRefreshJugadosTrigger, setUser } = useUser();
 	const currentSlug = currentUser?.slug ?? null;
 	const slug = propSlug || paramSlug;
 	const fileInputRef = useRef(null);
@@ -86,7 +86,7 @@ export default function Perfil({ slug: propSlug }) {
 			})
 			.catch(() => setData(null))
 			.finally(() => setLoading(false));
-	}, [slug, currentSlug]);
+	}, [slug, currentSlug, refreshJugadosTrigger]);
 
 	useEffect(() => {
 		if (!cropDragging) return;

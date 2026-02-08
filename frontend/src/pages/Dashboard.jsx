@@ -47,7 +47,7 @@ function isUpcoming(released) {
 
 export default function Dashboard() {
 	const slug = useCurrentUserSlug();
-	const { setRefreshJugadosTrigger } = useUser();
+	const { refreshJugadosTrigger, setRefreshJugadosTrigger } = useUser();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const tabFromUrl = searchParams.get("tab");
 	const validTab = TABS.some((t) => t.key === tabFromUrl) ? tabFromUrl : "completados";
@@ -69,7 +69,7 @@ export default function Dashboard() {
 			.then(setData)
 			.catch(() => setData(null))
 			.finally(() => setLoading(false));
-	}, [slug]);
+	}, [slug, refreshJugadosTrigger]);
 
 	const refresh = () => {
 		if (!slug) return;
