@@ -1,6 +1,7 @@
 node_modules/
 dist/
 *.db
+!backend/juegos_backup_manual.db
 .env
 .env.*
 !.env.example

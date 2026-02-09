@@ -7,6 +7,7 @@ import { getDb } from "./db.js";
 import { searchGames, getGameByRawgId } from "./rawg.js";
 import { checkAchievements, unlockAchievement, getAchievementProgress, revokeAchievementsIfNeeded, ACHIEVEMENTS } from "./achievements.js";
 import { sendPushToUser, isPushConfigured } from "./push.js";
+import { startBackupCron } from "./backupCron.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -422,6 +423,32 @@ app.get("/api/ranking/competencia", (req, res) => {
 	res.json({ period: p, since: since || null, ranking: result });
 });
 
+app.get("/api/admin/inspect", (req, res) => {
+	const key = req.query.key || req.headers["x-inspect-key"];
+	if (!process.env.INSPECT_DB_KEY || key !== process.env.INSPECT_DB_KEY) {
+		return res.status(401).json({ error: "No autorizado" });
+	}
+	try {
+		const tables = ["users", "games", "user_played", "user_pending", "user_achievements", "messages"];
+		const counts = {};
+		for (const t of tables) {
+			const r = db.prepare(`SELECT COUNT(*) as c FROM ${t}`).get();
+			counts[t] = r.c;
+		}
+		const users = db.prepare("SELECT id, name, slug FROM users").all();
+		const games = db.prepare("SELECT id, rawg_id, name FROM games LIMIT 20").all();
+		const achievements = db.prepare("SELECT user_id, achievement_id, unlocked_at FROM user_achievements").all();
+		res.json({
+			counts,
+			users,
+			games,
+			achievements,
+		});
+	} catch (e) {
+		res.status(500).json({ error: e.message });
+	}
+});
+
 getDb()
 	.then((database) => {
 		db = database;
@@ -462,6 +489,8 @@ getDb()
 		server.listen(Number(PORT), "0.0.0.0", () => {
 			console.log(`Backend escuchando en puerto ${PORT} (HTTP + WS /ws)`);
 		});
+
+		startBackupCron();
 
 		// Notificaciones de juegos pendientes lanzados (cada hora)
 		const today = () => new Date().toISOString().slice(0, 10);
