@@ -2,8 +2,13 @@ import "dotenv/config";
 import http from "http";
 import express from "express";
 import cors from "cors";
+import { copyFileSync, existsSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
 import { getDb } from "./db.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 import { searchGames, getGameByRawgId } from "./rawg.js";
 import { checkAchievements, unlockAchievement, getAchievementProgress, revokeAchievementsIfNeeded, ACHIEVEMENTS } from "./achievements.js";
 import { sendPushToUser, isPushConfigured } from "./push.js";
@@ -449,9 +454,17 @@ app.get("/api/admin/inspect", (req, res) => {
 	}
 });
 
-getDb()
-	.then((database) => {
-		db = database;
+(async () => {
+	const dbPath = process.env.DB_PATH;
+	if (dbPath && !existsSync(dbPath)) {
+		const seedPath = join(__dirname, "juegos_backup_manual.db");
+		if (existsSync(seedPath)) {
+			copyFileSync(seedPath, dbPath);
+			console.log("[Producción] Base de datos inicializada con copia de seguridad (juegos_backup_manual.db)");
+		}
+	}
+	const database = await getDb();
+	db = database;
 		const server = http.createServer(app);
 		const wss = new WebSocketServer({ server, path: "/ws" });
 		const usersBySlug = new Map();
@@ -521,8 +534,7 @@ getDb()
 				);
 			});
 		}, 60 * 60 * 1000);
-	})
-	.catch((err) => {
-		console.error("Error al iniciar la base de datos:", err);
-		process.exit(1);
-	});
+})().catch((err) => {
+	console.error("Error al iniciar la base de datos:", err);
+	process.exit(1);
+});
