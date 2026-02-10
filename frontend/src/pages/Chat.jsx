@@ -1,9 +1,21 @@
 import { useState, useEffect, useRef } from "react";
 import { useUser } from "../App";
+import { useToast } from "../components/ToastContext";
 import { apiBase, wsBase } from "../api";
 
+function isUpcoming(released) {
+	if (!released) return true;
+	const d = new Date(released);
+	if (Number.isNaN(d.getTime())) return true;
+	const today = new Date();
+	today.setHours(0, 0, 0, 0);
+	d.setHours(0, 0, 0, 0);
+	return d >= today;
+}
+
 export default function Chat({ embedded = false }) {
-	const { currentUser, users } = useUser();
+	const { currentUser, users, setRefreshJugadosTrigger } = useUser();
+	const { addToast } = useToast();
 	const otherUser = users.find((u) => u.slug !== currentUser?.slug) ?? null;
 	const [messages, setMessages] = useState([]);
 	const [loading, setLoading] = useState(true);
@@ -13,6 +25,7 @@ export default function Chat({ embedded = false }) {
 	const [searchQ, setSearchQ] = useState("");
 	const [searchResults, setSearchResults] = useState([]);
 	const [searching, setSearching] = useState(false);
+	const [addingGameKey, setAddingGameKey] = useState(null);
 	const listRef = useRef(null);
 	const wsRef = useRef(null);
 
@@ -144,6 +157,45 @@ export default function Chat({ embedded = false }) {
 		setSearchResults([]);
 	};
 
+	const gamePayload = (g) => ({
+		rawg_id: Number(g.rawg_id) ?? g.rawg_id,
+		name: g.name,
+		released: g.released ?? null,
+		image_url: g.image_url ?? null,
+		genres: g.genres ?? [],
+	});
+
+	const handleAddRecommendedGame = (msgId, listType, game) => {
+		if (!currentUser?.slug || !game?.rawg_id) return;
+		const key = `${msgId}-${listType}`;
+		setAddingGameKey(key);
+		const slug = currentUser.slug;
+		const payload = gamePayload(game);
+		const endpoint = listType === "jugando" ? "jugando" : "pendientes";
+		fetch(`${apiBase}/api/users/${slug}/${endpoint}`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(payload),
+		})
+			.then((r) => r.json().then((data) => ({ ok: r.ok, data })))
+			.then(({ ok, data }) => {
+				if (!ok || data?.error) {
+					addToast({ title: "Error", description: data?.error || "No se pudo añadir" });
+					return;
+				}
+				(data.newlyUnlocked || []).forEach((a) =>
+					addToast({ title: a.title, description: a.description, icon: a.icon })
+				);
+				addToast({
+					title: "Añadido",
+					description: listType === "jugando" ? "Añadido a Jugando" : "Añadido a tu lista",
+				});
+				setRefreshJugadosTrigger?.((t) => t + 1);
+			})
+			.catch(() => addToast({ title: "Error", description: "No se pudo añadir" }))
+			.finally(() => setAddingGameKey(null));
+	};
+
 	if (!otherUser) {
 		return (
 			<div className="py-12 text-center text-zinc-400">
@@ -200,15 +252,37 @@ export default function Chat({ embedded = false }) {
 								}`}
 							>
 								{m.game && (
-									<div className="flex items-center gap-2 mb-2 p-1.5 rounded-lg bg-black/20 -mx-0.5">
-										{m.game.image_url && (
-											<img
-												src={m.game.image_url}
-												alt=""
-												className="w-8 h-10 flex-shrink-0 object-cover rounded"
-											/>
+									<div className="mb-2">
+										<div className="flex items-center gap-2 p-1.5 rounded-lg bg-black/20 -mx-0.5">
+											{m.game.image_url && (
+												<img
+													src={m.game.image_url}
+													alt=""
+													className="w-8 h-10 flex-shrink-0 object-cover rounded"
+												/>
+											)}
+											<span className="text-xs font-medium truncate flex-1 min-w-0">{m.game.name}</span>
+										</div>
+										{!isMe && m.game.rawg_id && (
+											<div className="flex flex-wrap gap-1.5 mt-1.5">
+												<button
+													type="button"
+													onClick={() => handleAddRecommendedGame(m.id ?? m.created_at, "pendientes", m.game)}
+													disabled={!!addingGameKey}
+													className="px-2 py-1 rounded-md text-[11px] font-medium bg-zinc-600 text-white hover:bg-zinc-500 disabled:opacity-50"
+												>
+													{addingGameKey === `${m.id ?? m.created_at}-pendientes` ? "…" : isUpcoming(m.game.released) ? "Wishlist" : "Pendiente"}
+												</button>
+												<button
+													type="button"
+													onClick={() => handleAddRecommendedGame(m.id ?? m.created_at, "jugando", m.game)}
+													disabled={!!addingGameKey}
+													className="px-2 py-1 rounded-md text-[11px] font-medium bg-amber-600/90 text-white hover:bg-amber-500 disabled:opacity-50"
+												>
+													{addingGameKey === `${m.id ?? m.created_at}-jugando` ? "…" : "Jugando"}
+												</button>
+											</div>
 										)}
-										<span className="text-xs font-medium truncate flex-1 min-w-0">{m.game.name}</span>
 									</div>
 								)}
 								<p className="text-sm whitespace-pre-wrap break-words">{m.body}</p>

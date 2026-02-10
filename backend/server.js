@@ -98,7 +98,21 @@ app.get("/api/users/:slug/perfil", (req, res) => {
 			genres: typeof r.genres === "string" ? JSON.parse(r.genres || "[]") : r.genres,
 		}));
 
-	res.json({ user, jugados, pendientes });
+	const jugando = db
+		.prepare(
+			`SELECT up.added_at, g.id as game_id, g.rawg_id, g.name, g.released, g.image_url, g.genres
+			 FROM user_playing up
+			 JOIN games g ON g.id = up.game_id
+			 WHERE up.user_id = ?
+			 ORDER BY up.added_at DESC`
+		)
+		.all(user.id)
+		.map((r) => ({
+			...r,
+			genres: typeof r.genres === "string" ? JSON.parse(r.genres || "[]") : r.genres,
+		}));
+
+	res.json({ user, jugados, pendientes, jugando });
 });
 
 const MAX_AVATAR_LENGTH = 300000;
@@ -149,6 +163,48 @@ app.get("/api/users/:slug/conversation", (req, res) => {
 		from: { name: r.from_name, slug: r.from_slug },
 	}));
 	res.json({ messages, other });
+});
+
+app.get("/api/users/:slug/recommendations", (req, res) => {
+	const user = db.prepare("SELECT id FROM users WHERE slug = ?").get(req.params.slug);
+	if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+	const rows = db
+		.prepare(
+			`SELECT m.id, m.body, m.game_id, m.created_at, u.name as from_name, u.slug as from_slug
+			 FROM messages m
+			 JOIN users u ON u.id = m.from_user_id
+			 WHERE m.to_user_id = ? AND m.game_id IS NOT NULL
+			 AND NOT EXISTS (SELECT 1 FROM user_recommendation_dismissed d WHERE d.user_id = ? AND d.message_id = m.id)
+			 ORDER BY m.created_at DESC`
+		)
+		.all(user.id, user.id);
+	const games = {};
+	rows.forEach((r) => {
+		if (r.game_id && !games[r.game_id]) {
+			const g = db.prepare("SELECT id, rawg_id, name, released, image_url FROM games WHERE id = ?").get(r.game_id);
+			if (g) games[r.game_id] = g;
+		}
+	});
+	const recommendations = rows.map((r) => ({
+		id: r.id,
+		body: r.body,
+		game_id: r.game_id,
+		game: r.game_id ? games[r.game_id] : undefined,
+		created_at: r.created_at,
+		from: { name: r.from_name, slug: r.from_slug },
+	}));
+	res.json({ recommendations });
+});
+
+app.post("/api/users/:slug/recommendations/:messageId/dismiss", (req, res) => {
+	const user = db.prepare("SELECT id FROM users WHERE slug = ?").get(req.params.slug);
+	if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+	const messageId = parseInt(req.params.messageId, 10);
+	if (Number.isNaN(messageId)) return res.status(400).json({ error: "message_id inválido" });
+	db.prepare(
+		"INSERT OR IGNORE INTO user_recommendation_dismissed (user_id, message_id) VALUES (?, ?)"
+	).run(user.id, messageId);
+	res.json({ ok: true });
 });
 
 app.post("/api/users/:slug/messages", async (req, res) => {
@@ -230,13 +286,16 @@ app.post("/api/users/:slug/jugados", (req, res) => {
 	if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
 	const { rawg_id, name, released, image_url, genres, platforms, metacritic, rating, opinion, completed } = req.body;
+	if (rawg_id == null || rawg_id === "") {
+		return res.status(400).json({ error: "Falta rawg_id del juego" });
+	}
 	if (rating == null || rating < 0 || rating > 10) {
 		return res.status(400).json({ error: "Valoración entre 0 y 10" });
 	}
 	const completedVal = completed === false || completed === 0 ? 0 : 1;
 
 	const rawgGame = {
-		rawg_id: rawg_id,
+		rawg_id: Number(rawg_id) || rawg_id,
 		name: name || "Sin nombre",
 		released: released || null,
 		image_url: image_url || null,
@@ -254,6 +313,7 @@ app.post("/api/users/:slug/jugados", (req, res) => {
 			 ON CONFLICT(user_id, game_id) DO UPDATE SET rating = ?, opinion = ?, played_at = ?, completed = ?`
 		).run(user.id, gameId, rating, opinion || null, playedAt, completedVal, rating, opinion || null, playedAt, completedVal);
 		db.prepare("DELETE FROM user_pending WHERE user_id = ? AND game_id = ?").run(user.id, gameId);
+		db.prepare("DELETE FROM user_playing WHERE user_id = ? AND game_id = ?").run(user.id, gameId);
 	} catch (e) {
 		return res.status(500).json({ error: e.message });
 	}
@@ -266,8 +326,11 @@ app.post("/api/users/:slug/pendientes", (req, res) => {
 	if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
 	const { rawg_id, name, released, image_url, genres, platforms, metacritic } = req.body;
+	if (rawg_id == null || rawg_id === "") {
+		return res.status(400).json({ error: "Falta rawg_id del juego" });
+	}
 	const rawgGame = {
-		rawg_id: rawg_id,
+		rawg_id: Number(rawg_id) || rawg_id,
 		name: name || "Sin nombre",
 		released: released || null,
 		image_url: image_url || null,
@@ -281,6 +344,38 @@ app.post("/api/users/:slug/pendientes", (req, res) => {
 	try {
 		db.prepare(
 			`INSERT INTO user_pending (user_id, game_id, added_at) VALUES (?, ?, ?)
+			 ON CONFLICT(user_id, game_id) DO NOTHING`
+		).run(user.id, gameId, addedAt);
+	} catch (e) {
+		return res.status(500).json({ error: e.message });
+	}
+	const newlyUnlocked = checkAchievements(db, user.id);
+	res.status(201).json({ ok: true, game_id: gameId, added_at: addedAt, newlyUnlocked });
+});
+
+app.post("/api/users/:slug/jugando", (req, res) => {
+	const user = db.prepare("SELECT id FROM users WHERE slug = ?").get(req.params.slug);
+	if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+
+	const { rawg_id, name, released, image_url, genres, platforms, metacritic } = req.body;
+	if (rawg_id == null || rawg_id === "") {
+		return res.status(400).json({ error: "Falta rawg_id del juego" });
+	}
+	const rawgGame = {
+		rawg_id: Number(rawg_id) || rawg_id,
+		name: name || "Sin nombre",
+		released: released || null,
+		image_url: image_url || null,
+		genres: genres || [],
+		platforms: platforms || [],
+		metacritic: metacritic ?? null,
+	};
+	const gameId = getOrCreateGame(rawgGame);
+	const addedAt = new Date().toISOString();
+
+	try {
+		db.prepare(
+			`INSERT INTO user_playing (user_id, game_id, added_at) VALUES (?, ?, ?)
 			 ON CONFLICT(user_id, game_id) DO NOTHING`
 		).run(user.id, gameId, addedAt);
 	} catch (e) {
@@ -318,6 +413,16 @@ app.delete("/api/users/:slug/pendientes/:gameId", (req, res) => {
 	const gameId = parseInt(req.params.gameId, 10);
 	if (Number.isNaN(gameId)) return res.status(400).json({ error: "game_id inválido" });
 	db.prepare("DELETE FROM user_pending WHERE user_id = ? AND game_id = ?").run(user.id, gameId);
+	revokeAchievementsIfNeeded(db, user.id);
+	res.json({ ok: true });
+});
+
+app.delete("/api/users/:slug/jugando/:gameId", (req, res) => {
+	const user = db.prepare("SELECT id FROM users WHERE slug = ?").get(req.params.slug);
+	if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+	const gameId = parseInt(req.params.gameId, 10);
+	if (Number.isNaN(gameId)) return res.status(400).json({ error: "game_id inválido" });
+	db.prepare("DELETE FROM user_playing WHERE user_id = ? AND game_id = ?").run(user.id, gameId);
 	revokeAchievementsIfNeeded(db, user.id);
 	res.json({ ok: true });
 });
@@ -426,6 +531,179 @@ app.get("/api/ranking/competencia", (req, res) => {
 	}));
 
 	res.json({ period: p, since: since || null, ranking: result });
+});
+
+function getAgendaUserId(slug) {
+	const user = db.prepare("SELECT id FROM users WHERE slug = ?").get(slug);
+	return user?.id ?? null;
+}
+
+app.get("/api/users/:slug/agenda/ambitos", (req, res) => {
+	const userId = getAgendaUserId(req.params.slug);
+	if (!userId) return res.status(404).json({ error: "Usuario no encontrado" });
+	const rows = db.prepare("SELECT id, name, color, sort_order FROM agenda_ambitos WHERE user_id = ? ORDER BY sort_order, id").all(userId);
+	res.json({ ambitos: rows });
+});
+
+app.post("/api/users/:slug/agenda/ambitos", (req, res) => {
+	const userId = getAgendaUserId(req.params.slug);
+	if (!userId) return res.status(404).json({ error: "Usuario no encontrado" });
+	const { name, color, sort_order } = req.body || {};
+	if (!name || typeof name !== "string" || !name.trim()) return res.status(400).json({ error: "name es obligatorio" });
+	db.prepare("INSERT INTO agenda_ambitos (user_id, name, color, sort_order) VALUES (?, ?, ?, ?)").run(
+		userId, name.trim(), color && typeof color === "string" ? color.trim() : null, typeof sort_order === "number" ? sort_order : 0
+	);
+	const row = db.prepare("SELECT id, name, color, sort_order FROM agenda_ambitos WHERE id = last_insert_rowid()").get();
+	res.status(201).json(row);
+});
+
+app.patch("/api/users/:slug/agenda/ambitos/:id", (req, res) => {
+	const userId = getAgendaUserId(req.params.slug);
+	if (!userId) return res.status(404).json({ error: "Usuario no encontrado" });
+	const existing = db.prepare("SELECT id FROM agenda_ambitos WHERE id = ? AND user_id = ?").get(req.params.id, userId);
+	if (!existing) return res.status(404).json({ error: "Ámbito no encontrado" });
+	const { name, color, sort_order } = req.body || {};
+	const updates = [];
+	const params = [];
+	if (name !== undefined) { updates.push("name = ?"); params.push(typeof name === "string" ? name.trim() : ""); }
+	if (color !== undefined) { updates.push("color = ?"); params.push(color && typeof color === "string" ? color.trim() : null); }
+	if (sort_order !== undefined) { updates.push("sort_order = ?"); params.push(typeof sort_order === "number" ? sort_order : 0); }
+	if (updates.length === 0) return res.json(db.prepare("SELECT id, name, color, sort_order FROM agenda_ambitos WHERE id = ?").get(req.params.id));
+	params.push(req.params.id);
+	db.prepare(`UPDATE agenda_ambitos SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+	const row = db.prepare("SELECT id, name, color, sort_order FROM agenda_ambitos WHERE id = ?").get(req.params.id);
+	res.json(row);
+});
+
+app.delete("/api/users/:slug/agenda/ambitos/:id", (req, res) => {
+	const userId = getAgendaUserId(req.params.slug);
+	if (!userId) return res.status(404).json({ error: "Usuario no encontrado" });
+	const r = db.prepare("DELETE FROM agenda_ambitos WHERE id = ? AND user_id = ?").run(req.params.id, userId);
+	if (r.changes === 0) return res.status(404).json({ error: "Ámbito no encontrado" });
+	res.status(204).end();
+});
+
+app.get("/api/users/:slug/agenda/tasks", (req, res) => {
+	const userId = getAgendaUserId(req.params.slug);
+	if (!userId) return res.status(404).json({ error: "Usuario no encontrado" });
+	const today = new Date().toISOString().slice(0, 10);
+	const fromDate = req.query.from || today;
+	const toDate = req.query.to || fromDate;
+	let sql = "SELECT t.id, t.ambito_id, t.title, t.task_date, t.time_slot, t.completed_at, t.note, t.created_at, a.name as ambito_name, a.color as ambito_color FROM agenda_tasks t LEFT JOIN agenda_ambitos a ON a.id = t.ambito_id WHERE t.user_id = ?";
+	const params = [userId];
+	if (toDate !== fromDate) {
+		sql += " AND date(t.task_date) >= date(?) AND date(t.task_date) <= date(?)";
+		params.push(fromDate, toDate);
+	} else {
+		sql += " AND date(t.task_date) = date(?)";
+		params.push(fromDate);
+	}
+	sql += " ORDER BY t.task_date, t.time_slot, t.id";
+	const rows = db.prepare(sql).all(...params);
+	res.json({ tasks: rows });
+});
+
+app.post("/api/users/:slug/agenda/tasks", (req, res) => {
+	const userId = getAgendaUserId(req.params.slug);
+	if (!userId) return res.status(404).json({ error: "Usuario no encontrado" });
+	const { ambito_id, title, task_date, time_slot, note } = req.body || {};
+	if (!title || typeof title !== "string" || !title.trim()) return res.status(400).json({ error: "title es obligatorio" });
+	const dateStr = task_date && typeof task_date === "string" ? task_date.trim().slice(0, 10) : new Date().toISOString().slice(0, 10);
+	const now = new Date().toISOString();
+	db.prepare(
+		"INSERT INTO agenda_tasks (user_id, ambito_id, title, task_date, time_slot, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+	).run(userId, ambito_id && Number(ambito_id) ? Number(ambito_id) : null, title.trim(), dateStr, time_slot && typeof time_slot === "string" ? time_slot.trim() : null, note && typeof note === "string" ? note.trim() : null, now);
+	const row = db.prepare(
+		"SELECT t.id, t.ambito_id, t.title, t.task_date, t.time_slot, t.completed_at, t.note, t.created_at, a.name as ambito_name, a.color as ambito_color FROM agenda_tasks t LEFT JOIN agenda_ambitos a ON a.id = t.ambito_id WHERE t.id = last_insert_rowid()"
+	).get();
+	res.status(201).json(row);
+});
+
+app.patch("/api/users/:slug/agenda/tasks/:id", (req, res) => {
+	const userId = getAgendaUserId(req.params.slug);
+	if (!userId) return res.status(404).json({ error: "Usuario no encontrado" });
+	const existing = db.prepare("SELECT id FROM agenda_tasks WHERE id = ? AND user_id = ?").get(req.params.id, userId);
+	if (!existing) return res.status(404).json({ error: "Tarea no encontrada" });
+	const { title, task_date, time_slot, completed_at, note, ambito_id } = req.body || {};
+	const updates = [];
+	const params = [];
+	if (title !== undefined) { updates.push("title = ?"); params.push(typeof title === "string" ? title.trim() : ""); }
+	if (task_date !== undefined) { updates.push("task_date = ?"); params.push(typeof task_date === "string" ? task_date.slice(0, 10) : new Date().toISOString().slice(0, 10)); }
+	if (time_slot !== undefined) { updates.push("time_slot = ?"); params.push(time_slot == null || (typeof time_slot === "string" && !time_slot.trim()) ? null : (typeof time_slot === "string" ? time_slot.trim() : String(time_slot))); }
+	if (completed_at !== undefined) { updates.push("completed_at = ?"); params.push(completed_at === true || (typeof completed_at === "string" && completed_at) ? new Date().toISOString() : null); }
+	if (note !== undefined) { updates.push("note = ?"); params.push(note && typeof note === "string" ? note.trim() : null); }
+	if (ambito_id !== undefined) { updates.push("ambito_id = ?"); params.push(ambito_id && Number(ambito_id) ? Number(ambito_id) : null); }
+	if (updates.length === 0) return res.json(db.prepare("SELECT t.id, t.ambito_id, t.title, t.task_date, t.time_slot, t.completed_at, t.note, t.created_at, a.name as ambito_name, a.color as ambito_color FROM agenda_tasks t LEFT JOIN agenda_ambitos a ON a.id = t.ambito_id WHERE t.id = ?").get(req.params.id));
+	params.push(req.params.id);
+	db.prepare(`UPDATE agenda_tasks SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+	const row = db.prepare("SELECT t.id, t.ambito_id, t.title, t.task_date, t.time_slot, t.completed_at, t.note, t.created_at, a.name as ambito_name, a.color as ambito_color FROM agenda_tasks t LEFT JOIN agenda_ambitos a ON a.id = t.ambito_id WHERE t.id = ?").get(req.params.id);
+	res.json(row);
+});
+
+app.delete("/api/users/:slug/agenda/tasks/:id", (req, res) => {
+	const userId = getAgendaUserId(req.params.slug);
+	if (!userId) return res.status(404).json({ error: "Usuario no encontrado" });
+	const r = db.prepare("DELETE FROM agenda_tasks WHERE id = ? AND user_id = ?").run(req.params.id, userId);
+	if (r.changes === 0) return res.status(404).json({ error: "Tarea no encontrada" });
+	res.status(204).end();
+});
+
+app.get("/api/users/:slug/agenda/goals", (req, res) => {
+	const userId = getAgendaUserId(req.params.slug);
+	if (!userId) return res.status(404).json({ error: "Usuario no encontrado" });
+	const type = req.query.type;
+	const period_key = req.query.period_key;
+	let sql = "SELECT g.id, g.ambito_id, g.title, g.goal_type, g.period_key, g.target_value, g.target_unit, g.current_value, g.created_at, a.name as ambito_name, a.color as ambito_color FROM agenda_goals g LEFT JOIN agenda_ambitos a ON a.id = g.ambito_id WHERE g.user_id = ?";
+	const params = [userId];
+	if (type) { sql += " AND g.goal_type = ?"; params.push(type); }
+	if (period_key) { sql += " AND g.period_key = ?"; params.push(period_key); }
+	sql += " ORDER BY g.goal_type, g.period_key, g.id";
+	const rows = db.prepare(sql).all(...params);
+	res.json({ goals: rows });
+});
+
+app.post("/api/users/:slug/agenda/goals", (req, res) => {
+	const userId = getAgendaUserId(req.params.slug);
+	if (!userId) return res.status(404).json({ error: "Usuario no encontrado" });
+	const { ambito_id, title, goal_type, period_key, target_value, target_unit, current_value } = req.body || {};
+	if (!title || typeof title !== "string" || !title.trim()) return res.status(400).json({ error: "title es obligatorio" });
+	if (!goal_type || !["weekly", "monthly", "annual"].includes(goal_type)) return res.status(400).json({ error: "goal_type debe ser weekly, monthly o annual" });
+	if (!period_key || typeof period_key !== "string" || !period_key.trim()) return res.status(400).json({ error: "period_key es obligatorio (ej: 2026-W06, 2026-02, 2026)" });
+	const now = new Date().toISOString();
+	db.prepare(
+		"INSERT INTO agenda_goals (user_id, ambito_id, title, goal_type, period_key, target_value, target_unit, current_value, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	).run(userId, ambito_id && Number(ambito_id) ? Number(ambito_id) : null, title.trim(), goal_type, period_key.trim(), target_value != null ? Number(target_value) : null, target_unit && typeof target_unit === "string" ? target_unit.trim() : null, current_value != null ? Number(current_value) : 0, now);
+	const row = db.prepare(
+		"SELECT g.id, g.ambito_id, g.title, g.goal_type, g.period_key, g.target_value, g.target_unit, g.current_value, g.created_at, a.name as ambito_name, a.color as ambito_color FROM agenda_goals g LEFT JOIN agenda_ambitos a ON a.id = g.ambito_id WHERE g.id = last_insert_rowid()"
+	).get();
+	res.status(201).json(row);
+});
+
+app.patch("/api/users/:slug/agenda/goals/:id", (req, res) => {
+	const userId = getAgendaUserId(req.params.slug);
+	if (!userId) return res.status(404).json({ error: "Usuario no encontrado" });
+	const existing = db.prepare("SELECT id FROM agenda_goals WHERE id = ? AND user_id = ?").get(req.params.id, userId);
+	if (!existing) return res.status(404).json({ error: "Meta no encontrada" });
+	const { title, target_value, current_value, target_unit } = req.body || {};
+	const updates = [];
+	const params = [];
+	if (title !== undefined) { updates.push("title = ?"); params.push(typeof title === "string" ? title.trim() : ""); }
+	if (target_value !== undefined) { updates.push("target_value = ?"); params.push(target_value != null ? Number(target_value) : null); }
+	if (current_value !== undefined) { updates.push("current_value = ?"); params.push(current_value != null ? Number(current_value) : 0); }
+	if (target_unit !== undefined) { updates.push("target_unit = ?"); params.push(target_unit && typeof target_unit === "string" ? target_unit.trim() : null); }
+	if (updates.length === 0) return res.json(db.prepare("SELECT g.id, g.ambito_id, g.title, g.goal_type, g.period_key, g.target_value, g.target_unit, g.current_value, g.created_at, a.name as ambito_name, a.color as ambito_color FROM agenda_goals g LEFT JOIN agenda_ambitos a ON a.id = g.ambito_id WHERE g.id = ?").get(req.params.id));
+	params.push(req.params.id);
+	db.prepare(`UPDATE agenda_goals SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+	const row = db.prepare("SELECT g.id, g.ambito_id, g.title, g.goal_type, g.period_key, g.target_value, g.target_unit, g.current_value, g.created_at, a.name as ambito_name, a.color as ambito_color FROM agenda_goals g LEFT JOIN agenda_ambitos a ON a.id = g.ambito_id WHERE g.id = ?").get(req.params.id);
+	res.json(row);
+});
+
+app.delete("/api/users/:slug/agenda/goals/:id", (req, res) => {
+	const userId = getAgendaUserId(req.params.slug);
+	if (!userId) return res.status(404).json({ error: "Usuario no encontrado" });
+	const r = db.prepare("DELETE FROM agenda_goals WHERE id = ? AND user_id = ?").run(req.params.id, userId);
+	if (r.changes === 0) return res.status(404).json({ error: "Meta no encontrada" });
+	res.status(204).end();
 });
 
 app.get("/api/admin/inspect", (req, res) => {

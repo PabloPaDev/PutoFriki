@@ -10,6 +10,10 @@ import Perfil from "./pages/Perfil";
 import Ranking from "./pages/Ranking";
 import Amigos from "./pages/Amigos";
 import Chat from "./pages/Chat";
+import Agenda from "./pages/Agenda";
+import AgendaMetas from "./pages/AgendaMetas";
+import AgendaAmbitos from "./pages/AgendaAmbitos";
+import AgendaLayout from "./components/AgendaLayout";
 import RedirectPerfilToHome from "./components/RedirectPerfilToHome";
 import { ToastProvider } from "./components/ToastContext";
 
@@ -102,6 +106,11 @@ export default function App() {
 						<Route path="ranking" element={<Ranking />} />
 						<Route path="amigos" element={<Amigos />} />
 						<Route path="chat" element={<Chat />} />
+					</Route>
+					<Route path="/agenda" element={<AgendaLayout />}>
+						<Route index element={<Agenda />} />
+						<Route path="metas" element={<AgendaMetas />} />
+						<Route path="ambitos" element={<AgendaAmbitos />} />
 					</Route>
 					<Route path="*" element={<Navigate to="/" replace />} />
 				</Routes>

@@ -105,6 +105,16 @@ export async function getDb() {
 			FOREIGN KEY (game_id) REFERENCES games(id)
 		);
 
+		CREATE TABLE IF NOT EXISTS user_playing (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			game_id INTEGER NOT NULL,
+			added_at TEXT NOT NULL,
+			UNIQUE(user_id, game_id),
+			FOREIGN KEY (user_id) REFERENCES users(id),
+			FOREIGN KEY (game_id) REFERENCES games(id)
+		);
+
 		CREATE TABLE IF NOT EXISTS user_achievements (
 			user_id INTEGER NOT NULL,
 			achievement_id TEXT NOT NULL,
@@ -142,11 +152,58 @@ export async function getDb() {
 			FOREIGN KEY (game_id) REFERENCES games(id)
 		);
 
+		CREATE TABLE IF NOT EXISTS user_recommendation_dismissed (
+			user_id INTEGER NOT NULL,
+			message_id INTEGER NOT NULL,
+			PRIMARY KEY (user_id, message_id),
+			FOREIGN KEY (user_id) REFERENCES users(id),
+			FOREIGN KEY (message_id) REFERENCES messages(id)
+		);
+
+		CREATE TABLE IF NOT EXISTS agenda_ambitos (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			color TEXT,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			FOREIGN KEY (user_id) REFERENCES users(id)
+		);
+		CREATE TABLE IF NOT EXISTS agenda_tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			ambito_id INTEGER,
+			title TEXT NOT NULL,
+			task_date TEXT NOT NULL,
+			time_slot TEXT,
+			completed_at TEXT,
+			note TEXT,
+			created_at TEXT NOT NULL,
+			FOREIGN KEY (user_id) REFERENCES users(id),
+			FOREIGN KEY (ambito_id) REFERENCES agenda_ambitos(id)
+		);
+		CREATE TABLE IF NOT EXISTS agenda_goals (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			ambito_id INTEGER,
+			title TEXT NOT NULL,
+			goal_type TEXT NOT NULL,
+			period_key TEXT NOT NULL,
+			target_value REAL,
+			target_unit TEXT,
+			current_value REAL NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL,
+			FOREIGN KEY (user_id) REFERENCES users(id),
+			FOREIGN KEY (ambito_id) REFERENCES agenda_ambitos(id)
+		);
+
 		CREATE INDEX IF NOT EXISTS idx_user_played_user ON user_played(user_id);
 		CREATE INDEX IF NOT EXISTS idx_user_played_played_at ON user_played(played_at);
 		CREATE INDEX IF NOT EXISTS idx_user_pending_user ON user_pending(user_id);
+		CREATE INDEX IF NOT EXISTS idx_user_playing_user ON user_playing(user_id);
 		CREATE INDEX IF NOT EXISTS idx_user_achievements_user ON user_achievements(user_id);
 		CREATE INDEX IF NOT EXISTS idx_messages_to_from ON messages(to_user_id, from_user_id);
+		CREATE INDEX IF NOT EXISTS idx_agenda_tasks_user_date ON agenda_tasks(user_id, task_date);
+		CREATE INDEX IF NOT EXISTS idx_agenda_goals_user_period ON agenda_goals(user_id, goal_type, period_key);
 	`);
 
 	try {

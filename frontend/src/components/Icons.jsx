@@ -14,6 +14,9 @@ import {
 	Trophy,
 	CircleSlash,
 	MessageCircle,
+	Play,
+	Target,
+	Layers,
 } from "lucide-react";
 
 const iconClass = "flex-shrink-0";
@@ -94,4 +97,16 @@ export function IconCalendarStats(props) {
 }
 export function IconCircleSlashStats(props) {
 	return <CircleSlash className={iconClass} size={sizeStats} strokeWidth={stroke} {...props} />;
+}
+export function IconPlayStats(props) {
+	return <Play className={iconClass} size={sizeStats} strokeWidth={stroke} {...props} />;
+}
+export function IconChatStats(props) {
+	return <MessageCircle className={iconClass} size={sizeStats} strokeWidth={stroke} {...props} />;
+}
+export function IconTarget(props) {
+	return <Target className={iconClass} size={sizeNav} strokeWidth={stroke} {...props} />;
+}
+export function IconLayers(props) {
+	return <Layers className={iconClass} size={sizeNav} strokeWidth={stroke} {...props} />;
 }

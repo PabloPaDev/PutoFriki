@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams, Link } from "react-router-dom";
 import { useUser } from "../App";
 import { apiBase } from "../api";
 import GameRow from "../components/GameRow";
 import { IconPlus } from "../components/Icons";
 
+const PABLO_SLUG = "pablo";
 const AVATAR_SIZE = 256;
 const MAX_PREVIEW = 3;
 const CROP_VIEW_SIZE = 280;
@@ -49,11 +50,11 @@ export default function Perfil({ slug: propSlug }) {
 	const fileInputRef = useRef(null);
 
 	const tabParam = searchParams.get("tab");
-	const validTab = ["completados", "abandonados", "pendientes"].includes(tabParam) ? tabParam : "completados";
+	const validTab = ["completados", "jugando", "abandonados", "pendientes"].includes(tabParam) ? tabParam : "completados";
 	const [data, setData] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [tab, setTab] = useState(validTab);
-	const [expanded, setExpanded] = useState({ completados: false, abandonados: false, pendientes: false });
+	const [expanded, setExpanded] = useState({ completados: false, jugando: false, abandonados: false, pendientes: false });
 	const [editBio, setEditBio] = useState("");
 	const [editAvatar, setEditAvatar] = useState(null);
 	const [saving, setSaving] = useState(false);
@@ -68,7 +69,7 @@ export default function Perfil({ slug: propSlug }) {
 
 	useEffect(() => {
 		const t = searchParams.get("tab");
-		setTab(["completados", "abandonados", "pendientes"].includes(t) ? t : "completados");
+		setTab(["completados", "jugando", "abandonados", "pendientes"].includes(t) ? t : "completados");
 	}, [searchParams]);
 
 	useEffect(() => {
@@ -125,10 +126,11 @@ export default function Perfil({ slug: propSlug }) {
 	const user = data?.user;
 	const jugados = data?.jugados ?? [];
 	const pendientes = data?.pendientes ?? [];
+	const jugando = data?.jugando ?? [];
 	const completadosTab = jugados.filter((g) => g.completed !== false);
 	const abandonadosTab = jugados.filter((g) => g.completed === false);
 
-	const listByTab = { completados: completadosTab, abandonados: abandonadosTab, pendientes };
+	const listByTab = { completados: completadosTab, jugando, abandonados: abandonadosTab, pendientes };
 	const currentList = listByTab[tab];
 	const displayedList = currentList.slice(0, expanded[tab] ? currentList.length : MAX_PREVIEW);
 	const showVerMas = currentList.length > MAX_PREVIEW && !expanded[tab];
@@ -145,7 +147,7 @@ export default function Perfil({ slug: propSlug }) {
 			className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
 				tab === key
 					? "bg-orange-600 text-white shadow-lg shadow-orange-600/20"
-					: "text-zinc-400 hover:text-white hover:bg-zinc-800"
+					: "text-zinc-200 hover:text-white hover:bg-zinc-800"
 			}`}
 		>
 			{label} ({count})
@@ -407,11 +409,23 @@ export default function Perfil({ slug: propSlug }) {
 				</div>
 			</div>
 
+			{isOwn && slug === PABLO_SLUG && (
+				<div className="mb-6">
+					<Link
+						to="/agenda"
+						className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-violet-600 text-white hover:bg-violet-500 transition-colors"
+					>
+						Agenda
+					</Link>
+				</div>
+			)}
+
 			<h2 className="text-lg sm:text-xl font-semibold text-white mb-2">
 				Juegos
 			</h2>
-			<div className="flex flex-wrap gap-2 mb-6 border-b border-zinc-800 pb-2">
+			<div className="flex flex-wrap gap-2 mb-6 rounded-2xl bg-zinc-900/85 border border-zinc-800 p-3">
 				{tabButton("completados", "Completados", completadosTab.length)}
+				{tabButton("jugando", "Jugando", jugando.length)}
 				{tabButton("abandonados", "Abandonados", abandonadosTab.length)}
 				{tabButton("pendientes", "Pendientes", pendientes.length)}
 			</div>
@@ -429,6 +443,44 @@ export default function Perfil({ slug: propSlug }) {
 									game={g}
 									isJugado
 									isCompletadosTab={true}
+									isAbandonadosTab={false}
+									isOwn={isOwn}
+									slug={slug}
+									onRemove={refresh}
+								/>
+							))}
+							{showVerMas && (
+								<div className="flex justify-center pt-2">
+									<button
+										type="button"
+										onClick={() => setExpanded((e) => ({ ...e, [tab]: true }))}
+										className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white border border-zinc-700 transition-colors"
+										aria-label={`Ver todos (${currentList.length - MAX_PREVIEW} más)`}
+									>
+										<IconPlus className="text-current" size={18} strokeWidth={1.8} aria-hidden />
+										+ Ver todos ({currentList.length - MAX_PREVIEW} más)
+									</button>
+								</div>
+							)}
+						</>
+					)}
+				</div>
+			)}
+			{tab === "jugando" && (
+				<div className="space-y-4">
+					{jugando.length === 0 ? (
+						<p className="text-zinc-500 text-center py-12 rounded-2xl bg-zinc-900/50 border border-zinc-800">
+							No hay juegos en curso.
+						</p>
+					) : (
+						<>
+							{displayedList.map((g) => (
+								<GameRow
+									key={g.game_id}
+									game={g}
+									isJugado={false}
+									isJugandoTab={true}
+									isCompletadosTab={false}
 									isAbandonadosTab={false}
 									isOwn={isOwn}
 									slug={slug}
@@ -502,6 +554,10 @@ export default function Perfil({ slug: propSlug }) {
 									key={g.game_id}
 									game={g}
 									isJugado={false}
+									isJugandoTab={false}
+									isPendientesTab={true}
+									isCompletadosTab={false}
+									isAbandonadosTab={false}
 									isOwn={isOwn}
 									slug={slug}
 									onRemove={refresh}
