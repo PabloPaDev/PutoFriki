@@ -218,6 +218,10 @@ export async function getDb() {
 		db.run("ALTER TABLE users ADD COLUMN avatar TEXT");
 		save();
 	} catch (_) {}
+	try {
+		db.run("ALTER TABLE users ADD COLUMN steam_id TEXT");
+		save();
+	} catch (_) {}
 
 	const countResult = db.exec("SELECT COUNT(*) as c FROM users");
 	const c = countResult.length && countResult[0].values[0][0];

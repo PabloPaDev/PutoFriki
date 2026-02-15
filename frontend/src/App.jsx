@@ -15,6 +15,7 @@ import AgendaMetas from "./pages/AgendaMetas";
 import AgendaAmbitos from "./pages/AgendaAmbitos";
 import AgendaLayout from "./components/AgendaLayout";
 import RedirectPerfilToHome from "./components/RedirectPerfilToHome";
+import Cerebro from "./pages/Cerebro";
 import { ToastProvider } from "./components/ToastContext";
 
 const defaultUserContext = {
@@ -37,19 +38,47 @@ export function useCurrentUserSlug() {
 	return currentUser?.slug ?? null;
 }
 
+const USER_CHECK_TIMEOUT_MS = 12000;
+
 export default function App() {
 	const [currentUser, setCurrentUser] = useState(null);
 	const [users, setUsers] = useState([]);
 	const [refreshJugadosTrigger, setRefreshJugadosTrigger] = useState(0);
+	const [initialUserCheckDone, setInitialUserCheckDone] = useState(false);
 
 	useEffect(() => {
 		const slug = localStorage.getItem("juegos_app_user");
-		if (slug) {
-			fetch(`${apiBase}/api/users/${slug}`)
-				.then((r) => (r.ok ? r.json() : null))
-				.then((u) => u && setCurrentUser(u))
-				.catch(() => setCurrentUser(null));
+		if (!slug) {
+			setInitialUserCheckDone(true);
+			return;
 		}
+		let cancelled = false;
+		const timeoutId = setTimeout(() => {
+			if (!cancelled) {
+				setCurrentUser(null);
+				setInitialUserCheckDone(true);
+			}
+		}, USER_CHECK_TIMEOUT_MS);
+		fetch(`${apiBase}/api/users/${slug}`)
+			.then((r) => (r.ok ? r.json() : null))
+			.then((u) => {
+				if (!cancelled) {
+					if (u) setCurrentUser(u);
+					else setCurrentUser(null);
+					setInitialUserCheckDone(true);
+				}
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setCurrentUser(null);
+					setInitialUserCheckDone(true);
+				}
+			})
+			.finally(() => clearTimeout(timeoutId));
+		return () => {
+			cancelled = true;
+			clearTimeout(timeoutId);
+		};
 	}, []);
 
 	useEffect(() => {
@@ -73,7 +102,8 @@ export default function App() {
 		}
 	};
 
-	if (currentUser === undefined && users.length) {
+	// Pantalla de carga inicial: comprobando si hay usuario guardado
+	if (!initialUserCheckDone) {
 		return (
 			<div className="min-h-screen flex items-center justify-center bg-black">
 				<p className="text-zinc-400">Cargando…</p>
@@ -103,6 +133,7 @@ export default function App() {
 						<Route path="perfil" element={<RedirectPerfilToHome />} />
 						<Route path="perfil/:slug" element={<Perfil />} />
 						<Route path="buscar" element={<Buscar />} />
+						<Route path="cerebro" element={<Cerebro />} />
 						<Route path="ranking" element={<Ranking />} />
 						<Route path="amigos" element={<Amigos />} />
 						<Route path="chat" element={<Chat />} />

@@ -74,11 +74,25 @@ export default function Dashboard() {
 	useEffect(() => {
 		if (!slug) return;
 		setLoading(true);
+		let cancelled = false;
+		const timeoutId = setTimeout(() => {
+			if (!cancelled) {
+				setData(null);
+				setLoading(false);
+			}
+		}, 12000);
 		fetch(`${apiBase}/api/users/${slug}/perfil`)
 			.then((r) => (r.ok ? r.json() : null))
-			.then(setData)
-			.catch(() => setData(null))
-			.finally(() => setLoading(false));
+			.then((d) => { if (!cancelled) setData(d); })
+			.catch(() => { if (!cancelled) setData(null); })
+			.finally(() => {
+				if (!cancelled) setLoading(false);
+				clearTimeout(timeoutId);
+			});
+		return () => {
+			cancelled = true;
+			clearTimeout(timeoutId);
+		};
 	}, [slug, refreshJugadosTrigger]);
 
 	useEffect(() => {

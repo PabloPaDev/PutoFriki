@@ -122,6 +122,9 @@ export default function Layout() {
 								{label}
 							</NavLink>
 						))}
+						<NavLink to="/cerebro" className={linkClass}>
+							El Cerebro
+						</NavLink>
 						<NavLink
 							to="/chat"
 							className={linkClass}

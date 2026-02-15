@@ -19,18 +19,22 @@ export default function GameRow({ game, isJugado, isJugandoTab, isPendientesTab,
 
 	const handleRemove = () => {
 		if (!confirm("¿Quitar de la lista?")) return;
+		const gameId = Number(game.game_id);
+		if (!gameId) return;
 		const path = isJugandoTab ? "jugando" : isJugado ? "jugados" : "pendientes";
-		fetch(`${apiBase}/api/users/${slug}/${path}/${game.game_id}`, { method: "DELETE" })
+		fetch(`${apiBase}/api/users/${slug}/${path}/${gameId}`, { method: "DELETE" })
 			.then((r) => r.json())
 			.then(() => {
 				onRemove?.();
 				if (isJugado || isJugandoTab) setRefreshJugadosTrigger?.((t) => t + 1);
 			})
-			.catch(() => alert("Error"));
+			.catch(() => addToast({ title: "Error", description: "Error al quitar de la lista" }));
 	};
 
 	const handleToggleCompleted = (completed) => {
-		fetch(`${apiBase}/api/users/${slug}/jugados/${game.game_id}`, {
+		const gameId = Number(game.game_id);
+		if (!gameId) return;
+		fetch(`${apiBase}/api/users/${slug}/jugados/${gameId}`, {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ completed }),
@@ -43,7 +47,7 @@ export default function GameRow({ game, isJugado, isJugandoTab, isPendientesTab,
 				onRemove?.();
 				setRefreshJugadosTrigger?.((t) => t + 1);
 			})
-			.catch(() => alert("Error"));
+			.catch(() => addToast({ title: "Error", description: "Error al actualizar" }));
 	};
 
 	const handleMoveToJugando = () => {
@@ -65,21 +69,26 @@ export default function GameRow({ game, isJugado, isJugandoTab, isPendientesTab,
 		})
 			.then((r) => r.json().then((data) => ({ ok: r.ok, data })))
 			.then(({ ok, data }) => {
-				if (!ok || data.error) {
-					alert(data?.error || "Error al mover");
+				if (!ok || data?.error) {
+					addToast({ title: "Error", description: data?.error || "Error al mover a Jugando" });
 					return;
 				}
 				(data.newlyUnlocked || []).forEach((a) =>
 					addToast({ title: a.title, description: a.description, icon: a.icon })
 				);
-				return fetch(`${apiBase}/api/users/${slug}/pendientes/${game.game_id}`, { method: "DELETE" });
+				const gameId = Number(game.game_id);
+				if (!gameId) {
+					alert("Error: no se pudo identificar el juego para quitar de pendientes");
+					return;
+				}
+				return fetch(`${apiBase}/api/users/${slug}/pendientes/${gameId}`, { method: "DELETE" });
 			})
 			.then((r) => (r && r.ok ? r.json() : null))
 			.then(() => {
 				onRemove?.();
 				setRefreshJugadosTrigger?.((t) => t + 1);
 			})
-			.catch(() => alert("Error al mover a Jugando"))
+			.catch(() => addToast({ title: "Error", description: "Error al mover a Jugando" }))
 			.finally(() => setSavingJugando(false));
 	};
 
@@ -106,14 +115,19 @@ export default function GameRow({ game, isJugado, isJugandoTab, isPendientesTab,
 		})
 			.then((r) => r.json().then((data) => ({ ok: r.ok, data })))
 			.then(({ ok, data }) => {
-				if (!ok || data.error) {
-					alert(data?.error || "Error al guardar");
+				if (!ok || data?.error) {
+					addToast({ title: "Error", description: data?.error || "Error al guardar" });
 					return;
 				}
 				(data.newlyUnlocked || []).forEach((a) =>
 					addToast({ title: a.title, description: a.description, icon: a.icon })
 				);
-				return fetch(`${apiBase}/api/users/${slug}/jugando/${game.game_id}`, { method: "DELETE" });
+				const gameId = Number(game.game_id);
+				if (!gameId) {
+					alert("Error: no se pudo identificar el juego para quitar de jugando");
+					return;
+				}
+				return fetch(`${apiBase}/api/users/${slug}/jugando/${gameId}`, { method: "DELETE" });
 			})
 			.then((r) => (r && r.ok ? r.json() : null))
 			.then(() => {
@@ -121,7 +135,7 @@ export default function GameRow({ game, isJugado, isJugandoTab, isPendientesTab,
 				onRemove?.();
 				setRefreshJugadosTrigger?.((t) => t + 1);
 			})
-			.catch(() => alert("Error al marcar como completado"))
+			.catch(() => addToast({ title: "Error", description: "Error al marcar como completado" }))
 			.finally(() => setSavingCompletado(false));
 	};
 

@@ -4,6 +4,7 @@ import { useUser } from "../App";
 import { apiBase } from "../api";
 import GameRow from "../components/GameRow";
 import { IconPlus } from "../components/Icons";
+import { useToast } from "../components/ToastContext";
 
 const PABLO_SLUG = "pablo";
 const AVATAR_SIZE = 256;
@@ -66,6 +67,60 @@ export default function Perfil({ slug: propSlug }) {
 	const [cropDragging, setCropDragging] = useState(false);
 	const cropDragStartRef = useRef({ x: 0, y: 0, offsetX: 0, offsetY: 0 });
 	const cropContainerRef = useRef(null);
+	const [steamProfile, setSteamProfile] = useState(null);
+	const [steamGames, setSteamGames] = useState([]);
+	const [steamGamesLoading, setSteamGamesLoading] = useState(false);
+	const [achievementsModal, setAchievementsModal] = useState(null);
+	const [achievementsData, setAchievementsData] = useState(null);
+	const [achievementsLoading, setAchievementsLoading] = useState(false);
+	const { addToast } = useToast();
+
+	const isOwn = !!slug && currentSlug === slug;
+
+	useEffect(() => {
+		const steam = searchParams.get("steam");
+		if (steam === "linked") {
+			addToast({ title: "Steam conectado", description: "Tu cuenta de Steam se ha vinculado correctamente." });
+			const next = new URLSearchParams(searchParams);
+			next.delete("steam");
+			setSearchParams(next, { replace: true });
+			if (slug) fetch(`${apiBase}/api/users/${slug}/steam/profile`).then((r) => r.ok ? r.json() : null).then(setSteamProfile);
+		} else if (steam === "error") {
+			addToast({ title: "Error", description: "No se pudo conectar con Steam." });
+			const next = new URLSearchParams(searchParams);
+			next.delete("steam");
+			setSearchParams(next, { replace: true });
+		}
+	}, [searchParams.get("steam"), slug]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	useEffect(() => {
+		if (!slug || !isOwn) return;
+		fetch(`${apiBase}/api/users/${slug}/steam/profile`)
+			.then((r) => (r.ok ? r.json() : null))
+			.then((d) => d?.linked ? setSteamProfile(d) : setSteamProfile(null))
+			.catch(() => setSteamProfile(null));
+	}, [slug, isOwn, refreshJugadosTrigger]);
+
+	const fetchSteamGames = () => {
+		if (!slug) return;
+		setSteamGamesLoading(true);
+		fetch(`${apiBase}/api/users/${slug}/steam/games`)
+			.then((r) => (r.ok ? r.json() : { games: [] }))
+			.then((d) => setSteamGames(d.games || []))
+			.catch(() => setSteamGames([]))
+			.finally(() => setSteamGamesLoading(false));
+	};
+
+	const openAchievements = (appId, gameName) => {
+		setAchievementsModal({ appId, gameName });
+		setAchievementsData(null);
+		setAchievementsLoading(true);
+		fetch(`${apiBase}/api/users/${slug}/steam/achievements/${appId}`)
+			.then((r) => (r.ok ? r.json() : null))
+			.then(setAchievementsData)
+			.catch(() => setAchievementsData({ achievements: [] }))
+			.finally(() => setAchievementsLoading(false));
+	};
 
 	useEffect(() => {
 		const t = searchParams.get("tab");
@@ -122,7 +177,6 @@ export default function Perfil({ slug: propSlug }) {
 			.catch(() => {});
 	};
 
-	const isOwn = !!slug && currentSlug === slug;
 	const user = data?.user;
 	const jugados = data?.jugados ?? [];
 	const pendientes = data?.pendientes ?? [];
@@ -408,6 +462,103 @@ export default function Perfil({ slug: propSlug }) {
 					</div>
 				</div>
 			</div>
+
+			{/* Steam: conectar y ver logros */}
+			{isOwn && (
+				<div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 mb-6">
+					<h3 className="text-sm font-semibold text-zinc-300 mb-2">Steam</h3>
+					{!steamProfile?.linked ? (
+						<a
+							href={`${apiBase || ""}/api/users/${slug}/steam/connect?redirect_origin=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "")}`}
+							className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-[#1b2838] text-white hover:bg-[#2a475e] border border-[#416a8c] transition-colors"
+						>
+							<span className="w-6 h-6 rounded bg-white/10 flex items-center justify-center text-xs font-bold">S</span>
+							Conectar con Steam
+						</a>
+					) : (
+						<>
+							<div className="flex items-center gap-2 mb-2">
+								{steamProfile?.summary?.avatarfull && (
+									<img src={steamProfile.summary.avatarfull} alt="" className="w-10 h-10 rounded-full" />
+								)}
+								<div>
+									<p className="text-white font-medium">{steamProfile?.summary?.personaname || "Steam conectado"}</p>
+									<p className="text-zinc-500 text-xs">Logros de juegos que juegas o has jugado (Steam). PS5 no tiene API pública para logros.</p>
+								</div>
+							</div>
+							<button
+								type="button"
+								onClick={fetchSteamGames}
+								disabled={steamGamesLoading}
+								className="px-4 py-2 rounded-xl text-sm font-medium bg-[#1b2838] text-white hover:bg-[#2a475e] border border-[#416a8c] disabled:opacity-50"
+							>
+								{steamGamesLoading ? "Cargando…" : "Ver juegos recientes"}
+							</button>
+							{steamGames.length > 0 && (
+								<ul className="mt-3 space-y-2">
+									{steamGames.slice(0, 15).map((g) => (
+										<li key={g.appid} className="flex items-center gap-2 py-1.5">
+											{g.img_icon_url && (
+												<img
+													src={`https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps/${g.appid}/${g.img_icon_url}.jpg`}
+													alt=""
+													className="w-8 h-8 rounded object-cover bg-zinc-800"
+												/>
+											)}
+											<span className="flex-1 text-sm text-zinc-200 truncate">{g.name}</span>
+											<button
+												type="button"
+												onClick={() => openAchievements(g.appid, g.name)}
+												className="text-xs text-orange-400 hover:text-orange-300"
+											>
+												Ver logros
+											</button>
+										</li>
+									))}
+								</ul>
+							)}
+						</>
+					)}
+				</div>
+			)}
+
+			{/* Modal logros Steam */}
+			{achievementsModal && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80" role="dialog" aria-modal="true" aria-labelledby="steam-achievements-title">
+					<div className="w-full max-w-md max-h-[85vh] overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-xl flex flex-col">
+						<div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+							<h2 id="steam-achievements-title" className="text-lg font-semibold text-white truncate">
+								{achievementsModal.gameName}
+							</h2>
+							<button type="button" onClick={() => setAchievementsModal(null)} className="text-zinc-400 hover:text-white p-1">✕</button>
+						</div>
+						<div className="p-4 overflow-y-auto flex-1">
+							{achievementsLoading ? (
+								<p className="text-zinc-500 text-sm">Cargando logros…</p>
+							) : achievementsData?.achievements?.length ? (
+								<ul className="space-y-2">
+									{achievementsData.achievements.map((a) => (
+										<li key={a.apiname} className="flex items-center gap-3 py-2 border-b border-zinc-800 last:border-0">
+											{(a.icon || a.iconGray) ? (
+												<img src={`https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps/${achievementsModal.appId}/${a.achieved ? (a.icon || a.iconGray) : (a.iconGray || a.icon)}.jpg`} alt="" className="w-10 h-10 rounded object-cover bg-zinc-800" />
+											) : (
+												<div className="w-10 h-10 rounded bg-zinc-800 flex items-center justify-center text-zinc-500 text-lg">{a.achieved ? "✓" : "○"}</div>
+											)}
+											<div className="flex-1 min-w-0">
+												<p className={`text-sm font-medium ${a.achieved ? "text-white" : "text-zinc-500"}`}>{a.displayName || a.apiname}</p>
+												{a.description && <p className="text-xs text-zinc-500 truncate">{a.description}</p>}
+												{a.achieved && a.unlocktime > 0 && <p className="text-xs text-zinc-600">{new Date(a.unlocktime * 1000).toLocaleDateString("es")}</p>}
+											</div>
+										</li>
+									))}
+								</ul>
+							) : (
+								<p className="text-zinc-500 text-sm">Sin logros o no disponibles para este juego.</p>
+							)}
+						</div>
+					</div>
+				</div>
+			)}
 
 			{isOwn && slug === PABLO_SLUG && (
 				<div className="mb-6">

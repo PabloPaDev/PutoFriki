@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
 	Trophy,
@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useUser, useCurrentUserSlug } from "../App";
 import { apiBase } from "../api";
+import { Link } from "react-router-dom";
 
 const ACHIEVEMENT_ICONS = {
 	trophy: Trophy,
@@ -118,7 +119,7 @@ function formatDescription(description) {
 }
 
 export default function Amigos() {
-	const { refreshJugadosTrigger } = useUser();
+	const { refreshJugadosTrigger, setRefreshJugadosTrigger } = useUser();
 	const currentSlug = useCurrentUserSlug();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [period, setPeriod] = useState("all");
@@ -126,6 +127,16 @@ export default function Amigos() {
 	const [achievements, setAchievements] = useState([]);
 	const [detailAchievement, setDetailAchievement] = useState(null);
 	const [insigniasExpanded, setInsigniasExpanded] = useState(false);
+	// Steam: perfil, biblioteca y logros (estilo app)
+	const [steamProfile, setSteamProfile] = useState(null);
+	const [steamLibrary, setSteamLibrary] = useState([]);
+	const [steamLibraryLoading, setSteamLibraryLoading] = useState(false);
+	const [steamAchievementsModal, setSteamAchievementsModal] = useState(null);
+	const [steamAchievementsData, setSteamAchievementsData] = useState(null);
+	const [steamAchievementsLoading, setSteamAchievementsLoading] = useState(false);
+	const [steamSyncLoading, setSteamSyncLoading] = useState(false);
+	const [steamSyncResult, setSteamSyncResult] = useState(null);
+	const steamSyncDoneRef = useRef(false);
 
 	// Onboarding: abrir biblioteca si vienen de first-login
 	useEffect(() => {
@@ -158,6 +169,54 @@ export default function Amigos() {
 			.then((d) => setAchievements(d.achievements || []))
 			.catch(() => setAchievements([]));
 	}, [currentSlug, refreshJugadosTrigger]);
+
+	useEffect(() => {
+		if (!currentSlug) return;
+		fetch(`${apiBase}/api/users/${currentSlug}/steam/profile`)
+			.then((r) => (r.ok ? r.json() : null))
+			.then((d) => (d?.linked ? setSteamProfile(d) : setSteamProfile(null)))
+			.catch(() => setSteamProfile(null));
+	}, [currentSlug, refreshJugadosTrigger]);
+
+	useEffect(() => {
+		if (!currentSlug || !steamProfile?.linked) {
+			setSteamLibrary([]);
+			return;
+		}
+		setSteamLibraryLoading(true);
+		fetch(`${apiBase}/api/users/${currentSlug}/steam/library`)
+			.then((r) => (r.ok ? r.json() : { games: [] }))
+			.then((d) => setSteamLibrary(d.games || []))
+			.catch(() => setSteamLibrary([]))
+			.finally(() => setSteamLibraryLoading(false));
+	}, [currentSlug, steamProfile?.linked, refreshJugadosTrigger]);
+
+	useEffect(() => {
+		if (!currentSlug || !steamAchievementsModal?.appId) return;
+		setSteamAchievementsData(null);
+		setSteamAchievementsLoading(true);
+		fetch(`${apiBase}/api/users/${currentSlug}/steam/achievements/${steamAchievementsModal.appId}`)
+			.then((r) => (r.ok ? r.json() : null))
+			.then(setSteamAchievementsData)
+			.catch(() => setSteamAchievementsData({ achievements: [] }))
+			.finally(() => setSteamAchievementsLoading(false));
+	}, [currentSlug, steamAchievementsModal?.appId]);
+
+	// Al entrar a la biblioteca Steam: sincronizar juegos con la app (Jugando / Wishlist)
+	useEffect(() => {
+		if (!currentSlug || !steamProfile?.linked || steamLibrary.length === 0 || steamLibraryLoading || steamSyncDoneRef.current) return;
+		steamSyncDoneRef.current = true;
+		setSteamSyncLoading(true);
+		setSteamSyncResult(null);
+		fetch(`${apiBase}/api/users/${currentSlug}/steam/sync-library`, { method: "POST" })
+			.then((r) => (r.ok ? r.json() : { error: "Error al sincronizar" }))
+			.then((data) => {
+				setSteamSyncResult(data);
+				if (data.addedPlaying > 0 || data.addedPending > 0) setRefreshJugadosTrigger?.((t) => t + 1);
+			})
+			.catch(() => setSteamSyncResult({ error: "Error al sincronizar" }))
+			.finally(() => setSteamSyncLoading(false));
+	}, [currentSlug, steamProfile?.linked, steamLibrary.length, steamLibraryLoading, setRefreshJugadosTrigger]);
 
 	if (!data) {
 		return (
@@ -376,6 +435,154 @@ export default function Amigos() {
 						>
 							Cerrar
 						</button>
+					</div>
+				</div>
+			)}
+
+			{/* Biblioteca Steam: perfil + juegos + logros con apariencia del frontend */}
+			<div className="mb-8 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4">
+				<h2 className="text-lg font-semibold text-zinc-300 mb-3">Steam</h2>
+				{!steamProfile?.linked ? (
+					<>
+						<p className="text-zinc-500 text-sm mb-2">
+							Conecta tu cuenta de Steam en tu perfil para ver aquí tu biblioteca y logros.
+						</p>
+						<Link
+							to={currentSlug ? `/perfil/${currentSlug}` : "/"}
+							className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-[#1b2838] text-white hover:bg-[#2a475e] border border-[#416a8c] transition-colors"
+						>
+							<span className="w-6 h-6 rounded bg-white/10 flex items-center justify-center text-xs font-bold">S</span>
+							Ir a perfil para conectar Steam
+						</Link>
+					</>
+				) : (
+					<>
+						<div className="flex items-center gap-3 p-3 rounded-xl bg-zinc-800/60 border border-zinc-700 mb-4">
+							{steamProfile?.summary?.avatarfull ? (
+								<img
+									src={steamProfile.summary.avatarfull}
+									alt=""
+									className="w-14 h-14 rounded-xl object-cover border border-zinc-600"
+								/>
+							) : (
+								<div className="w-14 h-14 rounded-xl bg-zinc-700 border border-zinc-600 flex items-center justify-center text-zinc-400 text-xl font-bold">S</div>
+							)}
+							<div>
+								<p className="font-semibold text-white">{steamProfile?.summary?.personaname || "Steam"}</p>
+								<p className="text-zinc-500 text-xs">Biblioteca y logros con la apariencia de P*** Friki</p>
+							</div>
+						</div>
+						{steamSyncLoading && (
+							<p className="text-amber-400/90 text-sm mb-2">Sincronizando tu biblioteca con Jugando y Wishlist…</p>
+						)}
+						{steamSyncResult && !steamSyncLoading && (
+							<p className="text-zinc-400 text-sm mb-2">
+								{steamSyncResult.error ? (
+									<span className="text-amber-400/90">{steamSyncResult.error}</span>
+								) : (
+									<>
+										Añadidos <strong className="text-white">{steamSyncResult.addedPlaying || 0}</strong> a Jugando y{" "}
+										<strong className="text-white">{steamSyncResult.addedPending || 0}</strong> a Wishlist.
+										{(steamSyncResult.addedPlaying || 0) + (steamSyncResult.addedPending || 0) === 0 && steamSyncResult.skipped > 0 && (
+											<span className="text-zinc-500"> (ya estaban en tus listas)</span>
+										)}
+									</>
+								)}
+							</p>
+						)}
+						<h3 className="text-sm font-medium text-zinc-500 mb-2">Tu biblioteca</h3>
+						{steamLibraryLoading ? (
+							<p className="text-zinc-500 text-sm py-4">Cargando biblioteca…</p>
+						) : steamLibrary.length === 0 ? (
+							<p className="text-zinc-500 text-sm py-2">
+								No se pudo cargar la biblioteca (puede que tu perfil Steam sea privado).
+							</p>
+						) : (
+							<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+								{steamLibrary.slice(0, 30).map((g) => {
+									const playtimeHours = g.playtime_forever ? Math.round(g.playtime_forever / 60) : 0;
+									const iconUrl = g.img_icon_url
+										? `https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps/${g.appid}/${g.img_icon_url}.jpg`
+										: null;
+									return (
+										<button
+											key={g.appid}
+											type="button"
+											onClick={() => setSteamAchievementsModal({ appId: g.appid, gameName: g.name || `App ${g.appid}` })}
+											className="flex flex-col items-center gap-2 p-3 rounded-xl bg-zinc-800/60 border border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800 transition-colors text-left"
+										>
+											{iconUrl ? (
+												<img src={iconUrl} alt="" className="w-16 h-16 rounded-lg object-cover bg-zinc-900" />
+											) : (
+												<div className="w-16 h-16 rounded-lg bg-zinc-700 flex items-center justify-center text-zinc-500 text-xs">?</div>
+											)}
+											<span className="text-zinc-200 text-xs font-medium line-clamp-2 text-center w-full">{g.name || `App ${g.appid}`}</span>
+											{playtimeHours > 0 && (
+												<span className="text-zinc-500 text-[10px] tabular-nums">{playtimeHours}h jugadas</span>
+											)}
+										</button>
+									);
+								})}
+							</div>
+						)}
+						{steamLibrary.length > 30 && (
+							<p className="text-zinc-500 text-xs mt-2">Mostrando 30 de {steamLibrary.length} juegos. Pulsa en uno para ver sus logros.</p>
+						)}
+					</>
+				)}
+			</div>
+
+			{steamAchievementsModal && (
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80"
+					role="dialog"
+					aria-modal="true"
+					aria-labelledby="steam-achievements-amigos-title"
+				>
+					<div className="w-full max-w-md max-h-[85vh] overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 shadow-xl flex flex-col">
+						<div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+							<h2 id="steam-achievements-amigos-title" className="text-lg font-semibold text-white truncate">
+								{steamAchievementsModal.gameName}
+							</h2>
+							<button
+								type="button"
+								onClick={() => setSteamAchievementsModal(null)}
+								className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+								aria-label="Cerrar"
+							>
+								<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+							</button>
+						</div>
+						<div className="p-4 overflow-y-auto flex-1">
+							{steamAchievementsLoading ? (
+								<p className="text-zinc-500 text-sm">Cargando logros…</p>
+							) : steamAchievementsData?.achievements?.length ? (
+								<ul className="space-y-2">
+									{steamAchievementsData.achievements.map((a) => (
+										<li key={a.apiname} className="flex items-center gap-3 py-2 border-b border-zinc-800 last:border-0">
+											{(a.icon || a.iconGray) ? (
+												<img
+													src={`https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps/${steamAchievementsModal.appId}/${a.achieved ? (a.icon || a.iconGray) : (a.iconGray || a.icon)}.jpg`}
+													alt=""
+													className="w-10 h-10 rounded-lg object-cover bg-zinc-800"
+												/>
+											) : (
+												<div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-500 text-lg">{a.achieved ? "✓" : "○"}</div>
+											)}
+											<div className="flex-1 min-w-0">
+												<p className={`text-sm font-medium ${a.achieved ? "text-white" : "text-zinc-500"}`}>{a.displayName || a.apiname}</p>
+												{a.description && <p className="text-xs text-zinc-500 truncate">{a.description}</p>}
+												{a.achieved && a.unlocktime > 0 && (
+													<p className="text-xs text-zinc-600">{new Date(a.unlocktime * 1000).toLocaleDateString("es")}</p>
+												)}
+											</div>
+										</li>
+									))}
+								</ul>
+							) : (
+								<p className="text-zinc-500 text-sm">Sin logros o no disponibles para este juego.</p>
+							)}
+						</div>
 					</div>
 				</div>
 			)}

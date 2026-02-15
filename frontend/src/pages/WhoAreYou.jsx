@@ -12,11 +12,22 @@ export default function WhoAreYou() {
 	const [accessLoading, setAccessLoading] = useState(true);
 
 	useEffect(() => {
+		let cancelled = false;
+		const timeoutId = setTimeout(() => {
+			if (!cancelled) setAccessLoading(false);
+		}, 10000);
 		fetch(`${apiBase}/api/access`)
 			.then((r) => (r.ok ? r.json() : { registrationClosed: false }))
-			.then((data) => setRegistrationClosed(data.registrationClosed === true))
-			.catch(() => setRegistrationClosed(false))
-			.finally(() => setAccessLoading(false));
+			.then((data) => { if (!cancelled) setRegistrationClosed(data.registrationClosed === true); })
+			.catch(() => { if (!cancelled) setRegistrationClosed(false); })
+			.finally(() => {
+				if (!cancelled) setAccessLoading(false);
+				clearTimeout(timeoutId);
+			});
+		return () => {
+			cancelled = true;
+			clearTimeout(timeoutId);
+		};
 	}, []);
 
 	const choose = (user) => {
