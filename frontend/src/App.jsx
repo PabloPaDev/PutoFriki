@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext } from "react";
+import { useState, useEffect, useCallback, createContext, useContext } from "react";
 import { apiBase } from "./api";
 import { registerPushIfPossible } from "./utils/pushRegistration";
 import { Routes, Route, Navigate } from "react-router-dom";
@@ -24,6 +24,10 @@ const defaultUserContext = {
 	setUser: () => {},
 	refreshJugadosTrigger: 0,
 	setRefreshJugadosTrigger: () => {},
+	optimisticAdds: { jugando: [], pendientes: [] },
+	addOptimisticAdd: () => {},
+	clearOptimisticAdds: () => {},
+	removeOptimisticAdd: () => {},
 };
 
 const UserContext = createContext(null);
@@ -45,6 +49,18 @@ export default function App() {
 	const [users, setUsers] = useState([]);
 	const [refreshJugadosTrigger, setRefreshJugadosTrigger] = useState(0);
 	const [initialUserCheckDone, setInitialUserCheckDone] = useState(false);
+	const [optimisticAdds, setOptimisticAdds] = useState({ jugando: [], pendientes: [] });
+
+	const addOptimisticAdd = useCallback((list, game) => {
+		const optId = `opt-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+		const entry = { ...game, game_id: optId, _optId: optId };
+		setOptimisticAdds((prev) => ({ ...prev, [list]: [...prev[list], entry] }));
+		return optId;
+	}, []);
+	const removeOptimisticAdd = useCallback((list, optId) => {
+		setOptimisticAdds((prev) => ({ ...prev, [list]: prev[list].filter((g) => g._optId !== optId) }));
+	}, []);
+	const clearOptimisticAdds = useCallback(() => setOptimisticAdds({ jugando: [], pendientes: [] }), []);
 
 	useEffect(() => {
 		const slug = localStorage.getItem("juegos_app_user");
@@ -125,7 +141,7 @@ export default function App() {
 	}
 
 	return (
-		<UserContext.Provider value={{ currentUser, users, setUser, refreshJugadosTrigger, setRefreshJugadosTrigger }}>
+		<UserContext.Provider value={{ currentUser, users, setUser, refreshJugadosTrigger, setRefreshJugadosTrigger, optimisticAdds, addOptimisticAdd, clearOptimisticAdds, removeOptimisticAdd }}>
 			<ToastProvider>
 				<Routes>
 					<Route path="/" element={<Layout />}>

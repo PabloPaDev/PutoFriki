@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useUser } from "./App";
 import { useToast } from "./components/ToastContext";
@@ -29,6 +29,7 @@ export default function Layout() {
 	const isHome = location.pathname === "/";
 	const [topCovers, setTopCovers] = useState([]);
 	const [carouselIndex, setCarouselIndex] = useState(0);
+	const prevPathnameRef = useRef(location.pathname);
 
 	useEffect(() => {
 		const slug = currentUser?.slug;
@@ -48,13 +49,14 @@ export default function Layout() {
 			.catch(() => setTopCovers([]));
 	}, [currentUser?.slug, refreshJugadosTrigger]);
 
-	// Al volver a la pantalla principal, cambiar el fondo a una portada de la colección (cualquier jugado)
+	// Solo cambiar el fondo al volver a Inicio desde otra ruta; no al cargar para evitar vibración
 	useEffect(() => {
+		const prev = prevPathnameRef.current;
+		prevPathnameRef.current = location.pathname;
 		if (location.pathname !== "/" || topCovers.length === 0) return;
-		setCarouselIndex((prev) => {
-			const next = Math.floor(Math.random() * topCovers.length);
-			return next === prev && topCovers.length > 1 ? (next + 1) % topCovers.length : next;
-		});
+		if (prev === "/") return; // ya estábamos en inicio (carga inicial o refresh)
+		const next = Math.floor(Math.random() * topCovers.length);
+		setCarouselIndex((prevIdx) => (next === prevIdx && topCovers.length > 1 ? (next + 1) % topCovers.length : next));
 	}, [location.pathname, topCovers.length]);
 
 	useEffect(() => {
@@ -81,16 +83,12 @@ export default function Layout() {
 
 	return (
 		<div className="min-h-screen flex flex-col pb-16 md:pb-0 relative">
-			{/* Fondo: portada de un juego de la colección del usuario; cambia al volver a Inicio */}
-			{topCovers.length > 0 && (
-				<div
-					className="fixed inset-0 z-0 overflow-hidden"
-					aria-hidden
-				>
-					<div className="absolute inset-0 bg-black/20 z-[1]" />
-					{topCovers.map((item, i) => (
+			{/* Fondo fijo desde el primer frame para evitar saltos; portadas solo si hay datos */}
+			<div className="fixed inset-0 z-0 overflow-hidden bg-zinc-950" aria-hidden>
+				<div className="absolute inset-0 bg-black/20 z-[1]" />
+				{topCovers.length > 0 && topCovers.map((item, i) => (
 					<div
-						key={item.image_url + i}
+						key={item.image_url + String(i)}
 						className="absolute inset-0 transition-opacity duration-[1500ms] ease-in-out"
 						style={{ opacity: i === carouselIndex ? 1 : 0 }}
 					>
@@ -100,9 +98,8 @@ export default function Layout() {
 							className="w-full h-full object-cover object-center scale-105 brightness-75"
 						/>
 					</div>
-					))}
-				</div>
-			)}
+				))}
+			</div>
 
 			<header className="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-900/95 backdrop-blur-sm safe-area-inset-top">
 				<div className="max-w-7xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between gap-3">
@@ -123,7 +120,7 @@ export default function Layout() {
 							</NavLink>
 						))}
 						<NavLink to="/cerebro" className={linkClass}>
-							El Cerebro
+							Recomendaciones
 						</NavLink>
 						<NavLink
 							to="/chat"
@@ -212,6 +209,16 @@ export default function Layout() {
 					>
 						<IconChatMobile className="text-current" aria-hidden />
 						<span>Chat</span>
+					</NavLink>
+					<NavLink
+						to="/cerebro"
+						className={({ isActive }) =>
+							`flex-1 flex flex-col items-center justify-center gap-0.5 min-h-[56px] py-2 px-2 text-xs font-medium transition-colors ${
+								isActive ? "text-orange-400 bg-orange-600/10" : "text-zinc-300 active:bg-zinc-800/80"
+							}`
+						}
+					>
+						<span>Recomendaciones</span>
 					</NavLink>
 					<NavLink
 						to="/buscar"

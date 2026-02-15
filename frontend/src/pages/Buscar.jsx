@@ -27,7 +27,7 @@ function GameResult({ game, onAddJugado, onAddPendiente, onAddJugando }) {
 	const [sendingRecommend, setSendingRecommend] = useState(false);
 	const slug = useCurrentUserSlug();
 	const navigate = useNavigate();
-	const { setRefreshJugadosTrigger, users, currentUser } = useUser();
+	const { setRefreshJugadosTrigger, users, currentUser, addOptimisticAdd, removeOptimisticAdd } = useUser();
 	const { addToast } = useToast();
 	const otherUser = users.find((u) => u.slug !== currentUser?.slug) ?? null;
 	const canRecommend = !!slug && !!otherUser && !sendingRecommend;
@@ -83,6 +83,9 @@ function GameResult({ game, onAddJugado, onAddPendiente, onAddJugando }) {
 	const handleAddPendiente = () => {
 		if (!slug || savingPendiente) return;
 		setSavingPendiente(true);
+		const list = "pendientes";
+		const optId = addOptimisticAdd?.(list, payload);
+		navigate(upcoming ? "/?tab=esperados" : "/?tab=pendientes", { replace: false });
 		fetch(`${apiBase}/api/users/${slug}/pendientes`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -91,23 +94,28 @@ function GameResult({ game, onAddJugado, onAddPendiente, onAddJugando }) {
 			.then((r) => r.json().then((data) => ({ ok: r.ok, data })))
 			.then(({ ok, data }) => {
 				if (!ok || data.error) {
-					alert(data?.error || "Error al guardar");
+					if (optId) removeOptimisticAdd?.(list, optId);
+					addToast({ title: "Error", description: data?.error || "Error al guardar" });
 					return;
 				}
 				(data.newlyUnlocked || []).forEach((a) =>
 					addToast({ title: a.title, description: a.description, icon: a.icon })
 				);
-				onAddPendiente?.();
 				setRefreshJugadosTrigger?.((t) => t + 1);
-				navigate(upcoming ? "/?tab=esperados" : "/?tab=pendientes", { replace: false });
 			})
-			.catch(() => alert("Error al añadir. ¿Está el backend en marcha?"))
+			.catch(() => {
+				if (optId) removeOptimisticAdd?.(list, optId);
+				addToast({ title: "Error", description: "Error al añadir. ¿Está el backend en marcha?" });
+			})
 			.finally(() => setSavingPendiente(false));
 	};
 
 	const handleAddJugando = () => {
 		if (!slug || savingJugando) return;
 		setSavingJugando(true);
+		const list = "jugando";
+		const optId = addOptimisticAdd?.(list, payload);
+		navigate("/?tab=jugando", { replace: false });
 		fetch(`${apiBase}/api/users/${slug}/jugando`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -116,17 +124,19 @@ function GameResult({ game, onAddJugado, onAddPendiente, onAddJugando }) {
 			.then((r) => r.json().then((data) => ({ ok: r.ok, data })))
 			.then(({ ok, data }) => {
 				if (!ok || data.error) {
-					alert(data?.error || "Error al guardar");
+					if (optId) removeOptimisticAdd?.(list, optId);
+					addToast({ title: "Error", description: data?.error || "Error al guardar" });
 					return;
 				}
 				(data.newlyUnlocked || []).forEach((a) =>
 					addToast({ title: a.title, description: a.description, icon: a.icon })
 				);
-				onAddJugando?.();
 				setRefreshJugadosTrigger?.((t) => t + 1);
-				navigate("/?tab=jugando", { replace: false });
 			})
-			.catch(() => alert("Error al añadir. ¿Está el backend en marcha?"))
+			.catch(() => {
+				if (optId) removeOptimisticAdd?.(list, optId);
+				addToast({ title: "Error", description: "Error al añadir. ¿Está el backend en marcha?" });
+			})
 			.finally(() => setSavingJugando(false));
 	};
 

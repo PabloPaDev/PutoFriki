@@ -45,7 +45,7 @@ const AVATAR_QUALITY = 0.82;
 export default function Perfil({ slug: propSlug }) {
 	const { slug: paramSlug } = useParams();
 	const [searchParams, setSearchParams] = useSearchParams();
-	const { currentUser, refreshJugadosTrigger, setRefreshJugadosTrigger, setUser } = useUser();
+	const { currentUser, refreshJugadosTrigger, setRefreshJugadosTrigger, setUser, clearOptimisticAdds } = useUser();
 	const currentSlug = currentUser?.slug ?? null;
 	const slug = propSlug || paramSlug;
 	const fileInputRef = useRef(null);
@@ -135,6 +135,7 @@ export default function Perfil({ slug: propSlug }) {
 			.then((r) => (r.ok ? r.json() : null))
 			.then((d) => {
 				setData(d);
+				clearOptimisticAdds?.();
 				if (d?.user && currentSlug === slug) {
 					setEditBio(d.user.bio || "");
 					if (setUser) setUser(d.user);
@@ -172,6 +173,7 @@ export default function Perfil({ slug: propSlug }) {
 			.then((r) => r.json())
 			.then((d) => {
 				setData(d);
+				clearOptimisticAdds?.();
 				setRefreshJugadosTrigger?.((t) => t + 1);
 			})
 			.catch(() => {});

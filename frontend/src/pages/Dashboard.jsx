@@ -53,7 +53,7 @@ function isUpcoming(released) {
 
 export default function Dashboard() {
 	const slug = useCurrentUserSlug();
-	const { refreshJugadosTrigger, setRefreshJugadosTrigger } = useUser();
+	const { refreshJugadosTrigger, setRefreshJugadosTrigger, optimisticAdds, addOptimisticAdd, clearOptimisticAdds, removeOptimisticAdd } = useUser();
 	const { addToast } = useToast();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const tabFromUrl = searchParams.get("tab");
@@ -83,7 +83,12 @@ export default function Dashboard() {
 		}, 12000);
 		fetch(`${apiBase}/api/users/${slug}/perfil`)
 			.then((r) => (r.ok ? r.json() : null))
-			.then((d) => { if (!cancelled) setData(d); })
+			.then((d) => {
+				if (!cancelled) {
+					setData(d);
+					clearOptimisticAdds?.();
+				}
+			})
 			.catch(() => { if (!cancelled) setData(null); })
 			.finally(() => {
 				if (!cancelled) setLoading(false);
@@ -93,7 +98,7 @@ export default function Dashboard() {
 			cancelled = true;
 			clearTimeout(timeoutId);
 		};
-	}, [slug, refreshJugadosTrigger]);
+	}, [slug, refreshJugadosTrigger, clearOptimisticAdds]);
 
 	useEffect(() => {
 		if (!slug || tab !== "recomendados") return;
@@ -118,7 +123,7 @@ export default function Dashboard() {
 
 	if (loading) {
 		return (
-			<div className="flex items-center justify-center py-20">
+			<div className="flex items-center justify-center min-h-[50vh] py-20">
 				<p className="text-zinc-400">Cargando…</p>
 			</div>
 		);
@@ -127,13 +132,16 @@ export default function Dashboard() {
 		return <p className="text-zinc-400 py-12">Error al cargar.</p>;
 	}
 
-	const { jugados, pendientes, jugando = [] } = data;
+	const { jugados, pendientes = [], jugando = [] } = data;
+	const baseJugando = Array.isArray(jugando) ? jugando : [];
+	const basePendientes = Array.isArray(pendientes) ? pendientes : [];
+	const jugandoTab = [...baseJugando, ...(optimisticAdds?.jugando ?? [])];
+	const pendientesMerged = [...basePendientes, ...(optimisticAdds?.pendientes ?? [])];
 	const completadosTab = jugados.filter((g) => g.completed !== false);
 	const abandonadosTab = jugados.filter((g) => g.completed === false);
-	const pendientesTab = pendientes.filter((g) => isAlreadyReleased(g.released));
-	const esperadosTab = pendientes.filter((g) => isUpcoming(g.released));
-	const jugandoTab = Array.isArray(jugando) ? jugando : [];
-	const total = jugados.length + pendientes.length + jugandoTab.length;
+	const pendientesTab = pendientesMerged.filter((g) => isAlreadyReleased(g.released));
+	const esperadosTab = pendientesMerged.filter((g) => isUpcoming(g.released));
+	const total = jugados.length + pendientesMerged.length + jugandoTab.length;
 
 	const stats = [
 		{ label: "Total", value: total, Icon: IconGamepadStats },
@@ -178,8 +186,11 @@ export default function Dashboard() {
 
 	const handleAddRecommended = (messageId, listType, game) => {
 		if (!slug || !game?.rawg_id) return;
-		setActingRecId(`${messageId}-${listType}`);
 		const endpoint = listType === "jugando" ? "jugando" : "pendientes";
+		const recItem = recommendations.find((r) => r.id === messageId);
+		const optId = addOptimisticAdd?.(listType, { ...gamePayload(game), platforms: game.platforms ?? [] });
+		setRecommendations((prev) => prev.filter((r) => r.id !== messageId));
+		setActingRecId(`${messageId}-${listType}`);
 		fetch(`${apiBase}/api/users/${slug}/${endpoint}`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -188,6 +199,8 @@ export default function Dashboard() {
 			.then((r) => r.json().then((data) => ({ ok: r.ok, data })))
 			.then(({ ok, data }) => {
 				if (!ok || data?.error) {
+					if (optId) removeOptimisticAdd?.(listType, optId);
+					if (recItem) setRecommendations((prev) => [recItem, ...prev]);
 					addToast({ title: "Error", description: data?.error || "No se pudo añadir" });
 					return;
 				}
@@ -199,7 +212,11 @@ export default function Dashboard() {
 				return fetch(`${apiBase}/api/users/${slug}/recommendations/${messageId}/dismiss`, { method: "POST" });
 			})
 			.then((r) => r?.ok && setRecommendations((prev) => prev.filter((r) => r.id !== messageId)))
-			.catch(() => addToast({ title: "Error", description: "No se pudo añadir" }))
+			.catch(() => {
+				if (optId) removeOptimisticAdd?.(listType, optId);
+				if (recItem) setRecommendations((prev) => [recItem, ...prev]);
+				addToast({ title: "Error", description: "No se pudo añadir" });
+			})
 			.finally(() => setActingRecId(null));
 	};
 

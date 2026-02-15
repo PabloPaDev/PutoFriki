@@ -17,25 +17,30 @@ function gamePayload(g) {
 	};
 }
 
-function BrainCard({ item, slug, onAdded, setRefreshJugadosTrigger, addToast }) {
+function BrainCard({ item, slug, onAdded, setRefreshJugadosTrigger, addToast, addOptimisticAdd, removeOptimisticAdd }) {
 	const [savingPendiente, setSavingPendiente] = useState(false);
 	const [savingJugando, setSavingJugando] = useState(false);
 	const navigate = useNavigate();
 	const g = item;
 	const saving = savingPendiente || savingJugando;
 	const canAdd = !!slug && !saving;
+	const payload = gamePayload(g);
 
 	const handlePendiente = () => {
 		if (!slug || savingPendiente) return;
 		setSavingPendiente(true);
+		const list = "pendientes";
+		const optId = addOptimisticAdd?.(list, payload);
+		navigate("/?tab=pendientes", { replace: false });
 		fetch(`${apiBase}/api/users/${slug}/pendientes`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(gamePayload(g)),
+			body: JSON.stringify(payload),
 		})
 			.then((r) => r.json().then((data) => ({ ok: r.ok, data })))
 			.then(({ ok, data }) => {
 				if (!ok || data?.error) {
+					if (optId) removeOptimisticAdd?.(list, optId);
 					addToast({ title: "Error", description: data?.error || "No se pudo añadir" });
 					return;
 				}
@@ -45,23 +50,29 @@ function BrainCard({ item, slug, onAdded, setRefreshJugadosTrigger, addToast }) 
 				addToast({ title: "Añadido", description: "Añadido a tu lista" });
 				setRefreshJugadosTrigger?.((t) => t + 1);
 				onAdded?.();
-				navigate("/?tab=pendientes", { replace: false });
 			})
-			.catch(() => addToast({ title: "Error", description: "No se pudo añadir" }))
+			.catch(() => {
+				if (optId) removeOptimisticAdd?.(list, optId);
+				addToast({ title: "Error", description: "No se pudo añadir" });
+			})
 			.finally(() => setSavingPendiente(false));
 	};
 
 	const handleJugando = () => {
 		if (!slug || savingJugando) return;
 		setSavingJugando(true);
+		const list = "jugando";
+		const optId = addOptimisticAdd?.(list, payload);
+		navigate("/?tab=jugando", { replace: false });
 		fetch(`${apiBase}/api/users/${slug}/jugando`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(gamePayload(g)),
+			body: JSON.stringify(payload),
 		})
 			.then((r) => r.json().then((data) => ({ ok: r.ok, data })))
 			.then(({ ok, data }) => {
 				if (!ok || data?.error) {
+					if (optId) removeOptimisticAdd?.(list, optId);
 					addToast({ title: "Error", description: data?.error || "No se pudo añadir" });
 					return;
 				}
@@ -71,9 +82,11 @@ function BrainCard({ item, slug, onAdded, setRefreshJugadosTrigger, addToast }) 
 				addToast({ title: "Añadido", description: "Añadido a Jugando" });
 				setRefreshJugadosTrigger?.((t) => t + 1);
 				onAdded?.();
-				navigate("/?tab=jugando", { replace: false });
 			})
-			.catch(() => addToast({ title: "Error", description: "No se pudo añadir" }))
+			.catch(() => {
+				if (optId) removeOptimisticAdd?.(list, optId);
+				addToast({ title: "Error", description: "No se pudo añadir" });
+			})
 			.finally(() => setSavingJugando(false));
 	};
 
@@ -122,7 +135,7 @@ function BrainCard({ item, slug, onAdded, setRefreshJugadosTrigger, addToast }) 
 
 export default function Cerebro() {
 	const slug = useCurrentUserSlug();
-	const { setRefreshJugadosTrigger } = useUser();
+	const { setRefreshJugadosTrigger, addOptimisticAdd, removeOptimisticAdd } = useUser();
 	const { addToast } = useToast();
 	const [loading, setLoading] = useState(true);
 	const [data, setData] = useState({ recommendations: [], profile: { topGenres: [] } });
@@ -160,7 +173,7 @@ export default function Cerebro() {
 
 	return (
 		<>
-			<h1 className="text-2xl sm:text-3xl font-bold text-white mb-1">El Cerebro</h1>
+			<h1 className="text-2xl sm:text-3xl font-bold text-white mb-1">Recomendaciones</h1>
 			<p className="text-zinc-400 mb-6">
 				Recomendaciones según lo que juegas, tienes pendiente y lo que te gusta. También próximos lanzamientos.
 			</p>
@@ -190,6 +203,8 @@ export default function Cerebro() {
 							onAdded={refresh}
 							setRefreshJugadosTrigger={setRefreshJugadosTrigger}
 							addToast={addToast}
+							addOptimisticAdd={addOptimisticAdd}
+							removeOptimisticAdd={removeOptimisticAdd}
 						/>
 					))}
 				</div>

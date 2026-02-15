@@ -414,6 +414,12 @@ function clearSteamRedirect(slug) {
 	steamRedirectOriginBySlug.delete(slug);
 }
 
+// Typo frecuente en móvil: conecct -> redirect a connect
+app.get("/api/users/:slug/steam/conecct", (req, res) => {
+	const q = req.originalUrl && req.originalUrl.includes("?") ? req.originalUrl.slice(req.originalUrl.indexOf("?")) : "";
+	res.redirect(302, `/api/users/${req.params.slug}/steam/connect${q}`);
+});
+
 app.get("/api/users/:slug/steam/connect", (req, res) => {
 	const user = db.prepare("SELECT id FROM users WHERE slug = ?").get(req.params.slug);
 	if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
@@ -602,43 +608,38 @@ app.get("/api/games/rawg/:rawgId", async (req, res) => {
 });
 
 app.post("/api/users/:slug/jugados", (req, res) => {
-	const user = db.prepare("SELECT id FROM users WHERE slug = ?").get(req.params.slug);
-	if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
-
-	const { rawg_id, name, released, image_url, genres, platforms, metacritic, rating, opinion, completed } = req.body;
-	if (rawg_id == null || rawg_id === "") {
-		return res.status(400).json({ error: "Falta rawg_id del juego" });
-	}
-	if (rating == null || rating < 0 || rating > 10) {
-		return res.status(400).json({ error: "Valoración entre 0 y 10" });
-	}
-	const completedVal = completed === false || completed === 0 ? 0 : 1;
-
-	const rawgGame = {
-		rawg_id: Number(rawg_id) || rawg_id,
-		name: name || "Sin nombre",
-		released: released || null,
-		image_url: image_url || null,
-		genres: genres || [],
-		platforms: platforms || [],
-		metacritic: metacritic ?? null,
-	};
-	const gameId = getOrCreateGame(rawgGame);
-	const playedAt = new Date().toISOString();
-
 	try {
+		const user = db.prepare("SELECT id FROM users WHERE slug = ?").get(req.params.slug);
+		if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+
+		const body = req.body || {};
+		const rawgGame = buildRawgGameFromBody(body);
+		if (!rawgGame) return res.status(400).json({ error: "Falta rawg_id del juego" });
+
+		const rating = body.rating != null ? Number(body.rating) : null;
+		if (rating == null || Number.isNaN(rating) || rating < 0 || rating > 10) {
+			return res.status(400).json({ error: "Valoración entre 0 y 10" });
+		}
+		const completedVal = body.completed === false || body.completed === 0 ? 0 : 1;
+		const opinion = typeof body.opinion === "string" ? body.opinion.trim() || null : null;
+
+		const gameId = getOrCreateGame(rawgGame);
+		const playedAt = new Date().toISOString();
+
 		db.prepare(
 			`INSERT INTO user_played (user_id, game_id, rating, opinion, played_at, completed)
 			 VALUES (?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(user_id, game_id) DO UPDATE SET rating = ?, opinion = ?, played_at = ?, completed = ?`
-		).run(user.id, gameId, rating, opinion || null, playedAt, completedVal, rating, opinion || null, playedAt, completedVal);
+		).run(user.id, gameId, rating, opinion, playedAt, completedVal, rating, opinion, playedAt, completedVal);
 		db.prepare("DELETE FROM user_pending WHERE user_id = ? AND game_id = ?").run(user.id, gameId);
 		db.prepare("DELETE FROM user_playing WHERE user_id = ? AND game_id = ?").run(user.id, gameId);
+
+		const newlyUnlocked = checkAchievements(db, user.id);
+		res.status(201).json({ ok: true, game_id: gameId, played_at: playedAt, newlyUnlocked });
 	} catch (e) {
-		return res.status(500).json({ error: e.message });
+		console.error("POST jugados:", e);
+		res.status(500).json({ error: e.message || "Error al añadir a jugados" });
 	}
-	const newlyUnlocked = checkAchievements(db, user.id);
-	res.status(201).json({ ok: true, game_id: gameId, played_at: playedAt, newlyUnlocked });
 });
 
 app.post("/api/users/:slug/pendientes", (req, res) => {
@@ -646,19 +647,9 @@ app.post("/api/users/:slug/pendientes", (req, res) => {
 		const user = db.prepare("SELECT id FROM users WHERE slug = ?").get(req.params.slug);
 		if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-		const { rawg_id, name, released, image_url, genres, platforms, metacritic } = req.body || {};
-		if (rawg_id == null || rawg_id === "") {
-			return res.status(400).json({ error: "Falta rawg_id del juego" });
-		}
-		const rawgGame = {
-			rawg_id: Number(rawg_id) || rawg_id,
-			name: name || "Sin nombre",
-			released: released || null,
-			image_url: image_url || null,
-			genres: Array.isArray(genres) ? genres : (genres || []),
-			platforms: Array.isArray(platforms) ? platforms : (platforms || []),
-			metacritic: metacritic ?? null,
-		};
+		const rawgGame = buildRawgGameFromBody(req.body);
+		if (!rawgGame) return res.status(400).json({ error: "Falta rawg_id del juego" });
+
 		const gameId = getOrCreateGame(rawgGame);
 		const addedAt = new Date().toISOString();
 
@@ -679,19 +670,9 @@ app.post("/api/users/:slug/jugando", (req, res) => {
 		const user = db.prepare("SELECT id FROM users WHERE slug = ?").get(req.params.slug);
 		if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-		const { rawg_id, name, released, image_url, genres, platforms, metacritic } = req.body || {};
-		if (rawg_id == null || rawg_id === "") {
-			return res.status(400).json({ error: "Falta rawg_id del juego" });
-		}
-		const rawgGame = {
-			rawg_id: Number(rawg_id) || rawg_id,
-			name: name || "Sin nombre",
-			released: released || null,
-			image_url: image_url || null,
-			genres: Array.isArray(genres) ? genres : (genres || []),
-			platforms: Array.isArray(platforms) ? platforms : (platforms || []),
-			metacritic: metacritic ?? null,
-		};
+		const rawgGame = buildRawgGameFromBody(req.body);
+		if (!rawgGame) return res.status(400).json({ error: "Falta rawg_id del juego" });
+
 		const gameId = getOrCreateGame(rawgGame);
 		const addedAt = new Date().toISOString();
 
@@ -708,21 +689,78 @@ app.post("/api/users/:slug/jugando", (req, res) => {
 });
 
 app.patch("/api/users/:slug/jugados/:gameId", (req, res) => {
-	const user = db.prepare("SELECT id FROM users WHERE slug = ?").get(req.params.slug);
-	if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
-	const gameId = parseInt(req.params.gameId, 10);
-	if (Number.isNaN(gameId)) return res.status(400).json({ error: "game_id inválido" });
-	const completed = req.body.completed === false || req.body.completed === 0 ? 0 : 1;
-	db.prepare("UPDATE user_played SET completed = ? WHERE user_id = ? AND game_id = ?").run(completed, user.id, gameId);
-	revokeAchievementsIfNeeded(db, user.id);
-	const newlyUnlocked = checkAchievements(db, user.id);
-	res.json({ ok: true, completed: completed === 1, newlyUnlocked });
+	try {
+		const user = db.prepare("SELECT id FROM users WHERE slug = ?").get(req.params.slug);
+		if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+		const gameId = parseGameId(req.params.gameId);
+		if (Number.isNaN(gameId)) return res.status(400).json({ error: "game_id inválido" });
+		const body = req.body || {};
+		const completed = body.completed === false || body.completed === 0 ? 0 : 1;
+		db.prepare("UPDATE user_played SET completed = ? WHERE user_id = ? AND game_id = ?").run(completed, user.id, gameId);
+		revokeAchievementsIfNeeded(db, user.id);
+		const newlyUnlocked = checkAchievements(db, user.id);
+		res.json({ ok: true, completed: completed === 1, newlyUnlocked });
+	} catch (e) {
+		console.error("PATCH jugados:", e);
+		res.status(500).json({ error: e.message || "Error al actualizar" });
+	}
 });
 
 function parseGameId(param) {
 	if (param == null || param === "") return NaN;
 	const n = parseInt(String(param).trim(), 10);
 	return Number.isNaN(n) || n < 1 ? NaN : n;
+}
+
+function normalizeRawgId(v) {
+	if (v == null || v === "") return null;
+	const n = Number(v);
+	if (Number.isNaN(n) || n < 1) return null;
+	return n;
+}
+
+function toArray(v) {
+	if (Array.isArray(v)) return v;
+	if (v == null) return [];
+	if (typeof v === "string") return v.split(",").map((s) => s.trim()).filter(Boolean);
+	return [];
+}
+
+function buildRawgGameFromBody(body) {
+	const b = body || {};
+	let rawg_id = normalizeRawgId(b.rawg_id);
+	let name = b.name || "Sin nombre";
+	let released = b.released || null;
+	let image_url = b.image_url || null;
+	let genres = toArray(b.genres);
+	let platforms = toArray(b.platforms);
+	let metacritic = b.metacritic ?? null;
+
+	if (rawg_id == null && b.game_id != null) {
+		const gameId = parseGameId(b.game_id);
+		if (!Number.isNaN(gameId)) {
+			const row = db.prepare("SELECT rawg_id, name, released, image_url, genres, platforms, metacritic FROM games WHERE id = ?").get(gameId);
+			if (row) {
+				rawg_id = Number(row.rawg_id);
+				if (!name || name === "Sin nombre") name = row.name || name;
+				if (released == null) released = row.released;
+				if (image_url == null) image_url = row.image_url;
+				if (genres.length === 0) genres = typeof row.genres === "string" ? JSON.parse(row.genres || "[]") : (row.genres || []);
+				if (platforms.length === 0) platforms = typeof row.platforms === "string" ? JSON.parse(row.platforms || "[]") : (row.platforms || []);
+				if (metacritic == null) metacritic = row.metacritic;
+			}
+		}
+	}
+	if (rawg_id == null) return null;
+	return {
+		rawg_id,
+		name,
+		released,
+		image_url,
+		genres,
+		platforms,
+		metacritic,
+	};
 }
 
 app.delete("/api/users/:slug/jugados/:gameId", (req, res) => {
